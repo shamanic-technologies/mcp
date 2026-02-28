@@ -23,7 +23,7 @@ RUN pnpm --filter "./shared/*" build
 RUN pnpm build
 
 # Prepare production directory with only production dependencies
-RUN pnpm deploy --prod /prod
+RUN pnpm deploy --filter @mcpfactory/mcp-service --prod /prod
 
 # Copy built files to production directory
 RUN cp -r /app/dist /prod/dist
