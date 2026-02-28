@@ -85,6 +85,28 @@ describe("parseWorkflowName", () => {
     });
   });
 
+  it("parses versioned styled workflow names (e.g. hormozi-v1)", () => {
+    const result = parseWorkflowName("sales-email-cold-outreach-hormozi-v1");
+    expect(result).toEqual({
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      signatureName: "hormozi-v1",
+      sectionKey: "sales-email-cold-outreach",
+    });
+  });
+
+  it("parses versioned styled workflow names with higher versions", () => {
+    const result = parseWorkflowName("pr-email-cold-outreach-hormozi-v3");
+    expect(result).toEqual({
+      category: "pr",
+      channel: "email",
+      audienceType: "cold-outreach",
+      signatureName: "hormozi-v3",
+      sectionKey: "pr-email-cold-outreach",
+    });
+  });
+
   it("returns null for invalid names", () => {
     expect(parseWorkflowName("invalid")).toBeNull();
     expect(parseWorkflowName("")).toBeNull();
@@ -127,6 +149,10 @@ describe("getWorkflowCategory", () => {
 describe("getWorkflowDisplayName", () => {
   it("capitalizes the signature name for valid workflow names", () => {
     expect(getWorkflowDisplayName("sales-email-cold-outreach-sienna")).toBe("Sienna");
+  });
+
+  it("capitalizes versioned styled workflow names", () => {
+    expect(getWorkflowDisplayName("sales-email-cold-outreach-hormozi-v1")).toBe("Hormozi-v1");
   });
 
   it("title-cases the raw name for invalid format", () => {

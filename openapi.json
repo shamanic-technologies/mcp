@@ -1,0 +1,1066 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "MCPFactory MCP Service",
+    "description": "MCP (Model Context Protocol) server for MCPFactory. Exposes campaign management tools via MCP protocol over HTTP.",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "https://mcp.mcpfactory.org"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "MCPFactory API key"
+      }
+    },
+    "schemas": {
+      "mcpfactory_status": {
+        "description": "Check MCPFactory connection status and configuration",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_status",
+          "definitions": {
+            "mcpfactory_status": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "mcpfactory_list_workflows": {
+        "description": "List all available workflows with their descriptions and categories. Includes styled workflows generated in the style of industry experts (e.g. Hormozi). Use the returned 'name' field as the workflow_name when creating a campaign.",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_list_workflows",
+          "definitions": {
+            "mcpfactory_list_workflows": {
+              "type": "object",
+              "properties": {
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "sales",
+                    "pr"
+                  ],
+                  "description": "Filter by workflow category"
+                },
+                "human_id": {
+                  "type": "string",
+                  "description": "Filter by human expert ID (for styled workflows)"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "mcpfactory_create_campaign": {
+        "description": "Create and immediately start a cold email campaign. Provide a URL, describe your target audience in plain text, and set a budget. The system automatically finds matching leads via AI.",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_create_campaign",
+          "definitions": {
+            "mcpfactory_create_campaign": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Campaign name"
+                },
+                "workflow_name": {
+                  "type": "string",
+                  "description": "Workflow name (e.g. 'sales-email-cold-outreach-sienna'). Use mcpfactory_list_workflows to see available workflows."
+                },
+                "brand_url": {
+                  "type": "string",
+                  "description": "Your brand/company URL to promote"
+                },
+                "target_audience": {
+                  "type": "string",
+                  "description": "Plain text description of your ideal customers (e.g. 'CTOs at SaaS startups with 10-50 employees in the US')"
+                },
+                "target_outcome": {
+                  "type": "string",
+                  "description": "What you want to achieve with this campaign (e.g. 'Book sales demos', 'Recruit community ambassadors', 'Get press coverage')"
+                },
+                "value_for_target": {
+                  "type": "string",
+                  "description": "What the target audience gains from responding (e.g. 'Access to an enterprise-grade analytics platform at startup pricing', 'Join a growing international community with competitive compensation')"
+                },
+                "urgency": {
+                  "type": "string",
+                  "description": "Time-based constraint that motivates action now (e.g. 'Recruitment closes in 30 days', 'Price doubles after March 1st')"
+                },
+                "scarcity": {
+                  "type": "string",
+                  "description": "Supply-based constraint on availability (e.g. 'Only 10 spots available worldwide', 'Limited to 50 participants')"
+                },
+                "risk_reversal": {
+                  "type": "string",
+                  "description": "Guarantee or safety net that removes risk for the prospect (e.g. 'Free trial for 2 weeks, no commitment', 'Phone screening call before any obligation')"
+                },
+                "social_proof": {
+                  "type": "string",
+                  "description": "Evidence of credibility and traction (e.g. 'Backed by 60 sponsors including X, Y, Z', '500+ companies already onboarded')"
+                },
+                "max_daily_budget_usd": {
+                  "type": "number",
+                  "description": "Maximum daily spend in USD (at least one budget required)"
+                },
+                "max_weekly_budget_usd": {
+                  "type": "number",
+                  "description": "Maximum weekly spend in USD"
+                },
+                "max_monthly_budget_usd": {
+                  "type": "number",
+                  "description": "Maximum monthly spend in USD"
+                },
+                "max_total_budget_usd": {
+                  "type": "number",
+                  "description": "Maximum total spend in USD (campaign stops permanently when reached)"
+                },
+                "max_leads": {
+                  "type": "number",
+                  "description": "Maximum number of leads to contact (campaign stops permanently when reached)"
+                },
+                "end_date": {
+                  "type": "string",
+                  "description": "Optional campaign end date (ISO format)"
+                }
+              },
+              "required": [
+                "name",
+                "workflow_name",
+                "brand_url",
+                "target_audience",
+                "target_outcome",
+                "value_for_target",
+                "urgency",
+                "scarcity",
+                "risk_reversal",
+                "social_proof"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "mcpfactory_list_campaigns": {
+        "description": "List all your cold email campaigns",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_list_campaigns",
+          "definitions": {
+            "mcpfactory_list_campaigns": {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ongoing",
+                    "stopped",
+                    "all"
+                  ],
+                  "description": "Filter by campaign status"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "mcpfactory_stop_campaign": {
+        "description": "Stop a running campaign",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_stop_campaign",
+          "definitions": {
+            "mcpfactory_stop_campaign": {
+              "type": "object",
+              "properties": {
+                "campaign_id": {
+                  "type": "string",
+                  "description": "Campaign ID to stop"
+                }
+              },
+              "required": [
+                "campaign_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "mcpfactory_resume_campaign": {
+        "description": "Resume a stopped campaign",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_resume_campaign",
+          "definitions": {
+            "mcpfactory_resume_campaign": {
+              "type": "object",
+              "properties": {
+                "campaign_id": {
+                  "type": "string",
+                  "description": "Campaign ID to resume"
+                }
+              },
+              "required": [
+                "campaign_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "mcpfactory_campaign_stats": {
+        "description": "Get statistics for a specific campaign",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_campaign_stats",
+          "definitions": {
+            "mcpfactory_campaign_stats": {
+              "type": "object",
+              "properties": {
+                "campaign_id": {
+                  "type": "string",
+                  "description": "Campaign ID to get stats for"
+                }
+              },
+              "required": [
+                "campaign_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "mcpfactory_campaign_debug": {
+        "description": "Get detailed debug info for a campaign: status, all runs, errors, and pipeline state",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_campaign_debug",
+          "definitions": {
+            "mcpfactory_campaign_debug": {
+              "type": "object",
+              "properties": {
+                "campaign_id": {
+                  "type": "string",
+                  "description": "Campaign ID to debug"
+                }
+              },
+              "required": [
+                "campaign_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "mcpfactory_list_brands": {
+        "description": "List all your brands (companies/websites you promote through campaigns)",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_list_brands",
+          "definitions": {
+            "mcpfactory_list_brands": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "mcpfactory_suggest_icp": {
+        "description": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of ideal customers that can be used as the target_audience in mcpfactory_create_campaign.",
+        "inputSchema": {
+          "$ref": "#/definitions/mcpfactory_suggest_icp",
+          "definitions": {
+            "mcpfactory_suggest_icp": {
+              "type": "object",
+              "properties": {
+                "brand_url": {
+                  "type": "string",
+                  "description": "The brand/company URL to analyze for ICP extraction"
+                }
+              },
+              "required": [
+                "brand_url"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Health check",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "service": {
+                      "type": "string",
+                      "example": "mcp-service"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp": {
+      "post": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "MCP JSON-RPC endpoint",
+        "description": "Handles MCP protocol requests. Use mcp-session-id header for session management.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "header",
+            "name": "mcp-session-id",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Session ID (returned after first request)"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "jsonrpc": {
+                    "type": "string",
+                    "example": "2.0"
+                  },
+                  "method": {
+                    "type": "string",
+                    "example": "tools/call"
+                  },
+                  "params": {
+                    "type": "object"
+                  },
+                  "id": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC response"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "MCP SSE endpoint for server notifications",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "mcp-session-id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "MCP"
+        ],
+        "summary": "Close MCP session",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "mcp-session-id",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session closed"
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_status": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Check MCPFactory connection status and configuration",
+        "description": "MCP Tool: mcpfactory_status. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_status\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_list_workflows": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "List all available workflows with their descriptions and categories. Includes styled workflows generated in the style of industry experts (e.g. Hormozi). Use the returned 'name' field as the workflow_name when creating a campaign.",
+        "description": "MCP Tool: mcpfactory_list_workflows. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_list_workflows\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "sales",
+                      "pr"
+                    ],
+                    "description": "Filter by workflow category"
+                  },
+                  "human_id": {
+                    "type": "string",
+                    "description": "Filter by human expert ID (for styled workflows)"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_create_campaign": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Create and immediately start a cold email campaign. Provide a URL, describe your target audience in plain text, and set a budget. The system automatically finds matching leads via AI.",
+        "description": "MCP Tool: mcpfactory_create_campaign. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_create_campaign\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Campaign name"
+                  },
+                  "workflow_name": {
+                    "type": "string",
+                    "description": "Workflow name (e.g. 'sales-email-cold-outreach-sienna'). Use mcpfactory_list_workflows to see available workflows."
+                  },
+                  "brand_url": {
+                    "type": "string",
+                    "description": "Your brand/company URL to promote"
+                  },
+                  "target_audience": {
+                    "type": "string",
+                    "description": "Plain text description of your ideal customers (e.g. 'CTOs at SaaS startups with 10-50 employees in the US')"
+                  },
+                  "target_outcome": {
+                    "type": "string",
+                    "description": "What you want to achieve with this campaign (e.g. 'Book sales demos', 'Recruit community ambassadors', 'Get press coverage')"
+                  },
+                  "value_for_target": {
+                    "type": "string",
+                    "description": "What the target audience gains from responding (e.g. 'Access to an enterprise-grade analytics platform at startup pricing', 'Join a growing international community with competitive compensation')"
+                  },
+                  "urgency": {
+                    "type": "string",
+                    "description": "Time-based constraint that motivates action now (e.g. 'Recruitment closes in 30 days', 'Price doubles after March 1st')"
+                  },
+                  "scarcity": {
+                    "type": "string",
+                    "description": "Supply-based constraint on availability (e.g. 'Only 10 spots available worldwide', 'Limited to 50 participants')"
+                  },
+                  "risk_reversal": {
+                    "type": "string",
+                    "description": "Guarantee or safety net that removes risk for the prospect (e.g. 'Free trial for 2 weeks, no commitment', 'Phone screening call before any obligation')"
+                  },
+                  "social_proof": {
+                    "type": "string",
+                    "description": "Evidence of credibility and traction (e.g. 'Backed by 60 sponsors including X, Y, Z', '500+ companies already onboarded')"
+                  },
+                  "max_daily_budget_usd": {
+                    "type": "number",
+                    "description": "Maximum daily spend in USD (at least one budget required)"
+                  },
+                  "max_weekly_budget_usd": {
+                    "type": "number",
+                    "description": "Maximum weekly spend in USD"
+                  },
+                  "max_monthly_budget_usd": {
+                    "type": "number",
+                    "description": "Maximum monthly spend in USD"
+                  },
+                  "max_total_budget_usd": {
+                    "type": "number",
+                    "description": "Maximum total spend in USD (campaign stops permanently when reached)"
+                  },
+                  "max_leads": {
+                    "type": "number",
+                    "description": "Maximum number of leads to contact (campaign stops permanently when reached)"
+                  },
+                  "end_date": {
+                    "type": "string",
+                    "description": "Optional campaign end date (ISO format)"
+                  }
+                },
+                "required": [
+                  "name",
+                  "workflow_name",
+                  "brand_url",
+                  "target_audience",
+                  "target_outcome",
+                  "value_for_target",
+                  "urgency",
+                  "scarcity",
+                  "risk_reversal",
+                  "social_proof"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_list_campaigns": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "List all your cold email campaigns",
+        "description": "MCP Tool: mcpfactory_list_campaigns. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_list_campaigns\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "ongoing",
+                      "stopped",
+                      "all"
+                    ],
+                    "description": "Filter by campaign status"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_stop_campaign": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Stop a running campaign",
+        "description": "MCP Tool: mcpfactory_stop_campaign. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_stop_campaign\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "campaign_id": {
+                    "type": "string",
+                    "description": "Campaign ID to stop"
+                  }
+                },
+                "required": [
+                  "campaign_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_resume_campaign": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Resume a stopped campaign",
+        "description": "MCP Tool: mcpfactory_resume_campaign. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_resume_campaign\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "campaign_id": {
+                    "type": "string",
+                    "description": "Campaign ID to resume"
+                  }
+                },
+                "required": [
+                  "campaign_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_campaign_stats": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Get statistics for a specific campaign",
+        "description": "MCP Tool: mcpfactory_campaign_stats. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_campaign_stats\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "campaign_id": {
+                    "type": "string",
+                    "description": "Campaign ID to get stats for"
+                  }
+                },
+                "required": [
+                  "campaign_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_campaign_debug": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Get detailed debug info for a campaign: status, all runs, errors, and pipeline state",
+        "description": "MCP Tool: mcpfactory_campaign_debug. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_campaign_debug\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "campaign_id": {
+                    "type": "string",
+                    "description": "Campaign ID to debug"
+                  }
+                },
+                "required": [
+                  "campaign_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_list_brands": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "List all your brands (companies/websites you promote through campaigns)",
+        "description": "MCP Tool: mcpfactory_list_brands. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_list_brands\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/mcpfactory_suggest_icp": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of ideal customers that can be used as the target_audience in mcpfactory_create_campaign.",
+        "description": "MCP Tool: mcpfactory_suggest_icp. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"mcpfactory_suggest_icp\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brand_url": {
+                    "type": "string",
+                    "description": "The brand/company URL to analyze for ICP extraction"
+                  }
+                },
+                "required": [
+                  "brand_url"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
