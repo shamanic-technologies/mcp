@@ -8,9 +8,10 @@ export const toolDefinitions = {
     schema: z.object({}),
   },
   mcpfactory_list_workflows: {
-    description: "List all available workflows with their descriptions and categories",
+    description: "List all available workflows with their descriptions and categories. Includes styled workflows generated in the style of industry experts (e.g. Hormozi). Use the returned 'name' field as the workflow_name when creating a campaign.",
     schema: z.object({
       category: z.enum(["sales", "pr"]).optional().describe("Filter by workflow category"),
+      human_id: z.string().optional().describe("Filter by human expert ID (for styled workflows)"),
     }),
   },
   mcpfactory_create_campaign: {
@@ -153,19 +154,31 @@ async function handleStatus() {
 }
 
 async function handleListWorkflows(args: Record<string, unknown>) {
-  const { WORKFLOW_DEFINITIONS, getWorkflowDefinitionsByCategory } = await import("@mcpfactory/content");
-  const category = args.category as string | undefined;
-  const workflows = category
-    ? getWorkflowDefinitionsByCategory(category as "sales" | "pr")
-    : WORKFLOW_DEFINITIONS;
+  const params = new URLSearchParams();
+  if (args.category) params.set("category", args.category as string);
+  if (args.human_id) params.set("humanId", args.human_id as string);
+
+  const queryString = params.toString();
+  const path = `/v1/workflows${queryString ? `?${queryString}` : ""}`;
+  const result = await callApi<{ workflows: Array<Record<string, unknown>> }>(path);
+
+  if (result.error) {
+    throw new Error(result.error);
+  }
+
+  const workflows = (result.data as { workflows: Array<Record<string, unknown>> }).workflows;
+
   return {
     workflows: workflows.map((wf) => ({
-      sectionKey: wf.sectionKey,
-      label: wf.label,
+      name: wf.name,
+      displayName: wf.displayName || wf.name,
       description: wf.description,
       category: wf.category,
       channel: wf.channel,
       audienceType: wf.audienceType,
+      signatureName: wf.signatureName,
+      humanId: wf.humanId ?? null,
+      styleName: wf.styleName ?? null,
     })),
   };
 }
