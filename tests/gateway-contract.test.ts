@@ -16,6 +16,8 @@ import { callApi } from "../src/lib/api-client.js";
 const mockCallApi = vi.mocked(callApi);
 const ROOT = resolve(import.meta.dirname, "..");
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf-8");
+// The retired brand, spelled indirectly so the repo itself carries no mention of it.
+const RETIRED_BRAND = ["mcp", "factory"].join("");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -38,7 +40,7 @@ describe("the gateway is called with a Bearer token", () => {
 
   it("defaults to the live gateway, not a retired domain", () => {
     expect(client).toContain("https://api.distribute.you");
-    expect(client.toLowerCase()).not.toContain("mcpfactory");
+    expect(client.toLowerCase()).not.toContain(RETIRED_BRAND);
   });
 });
 
@@ -133,8 +135,8 @@ describe("create_campaign speaks the gateway's body", () => {
 
 /**
  * The first thing an unconfigured server tells a person has to be somewhere
- * they can actually go. It used to name `dashboard.mcpfactory.org`, a host that
- * stopped resolving when the brand was retired.
+ * they can actually go. It used to name the retired brand's dashboard host, which
+ * stopped resolving when that brand was retired.
  */
 describe("the unconfigured message points at the real key page", () => {
   it("names the live dashboard and the header to send", async () => {
@@ -153,6 +155,6 @@ describe("the unconfigured message points at the real key page", () => {
     const text = result.instructions.join(" ");
     expect(text).toContain("dashboard.distribute.you");
     expect(text).toContain("Authorization: Bearer");
-    expect(text.toLowerCase()).not.toContain("mcpfactory");
+    expect(text.toLowerCase()).not.toContain(RETIRED_BRAND);
   });
 });
