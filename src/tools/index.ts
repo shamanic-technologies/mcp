@@ -34,7 +34,7 @@ export const toolDefinitions = {
   distribute_list_campaigns: {
     description: "List all your cold email campaigns",
     schema: z.object({
-      status: z.enum(["active", "stopped", "all"]).optional().describe("Filter by campaign status"),
+      status: z.enum(["ongoing", "stopped", "all"]).optional().describe("Filter by campaign status. `ongoing` is the vocabulary the platform stores — an unrecognised value is not refused, it is ignored, and the whole list comes back."),
     }),
   },
   distribute_campaign_stats: {
@@ -158,27 +158,70 @@ async function handleListWorkflows(args: Record<string, unknown>) {
 
 async function handleListCampaigns(args: Record<string, unknown>) {
   const status = args.status || "all";
-  const result = await callApi(`/v1/campaigns?status=${status}`);
+  const result = await callApi<{ campaigns: Array<Record<string, unknown>> }>(
+    `/v1/campaigns?status=${status}`,
+  );
 
   if (result.error) {
     throw new Error(result.error);
   }
 
-  return result.data;
+  const campaigns = (result.data as { campaigns: Array<Record<string, unknown>> }).campaigns;
+
+  // A projection, not the row. The gateway returns 34 fields per campaign including
+  // the brand's whole offer, ~380 characters of it each, and one real account's 134
+  // campaigns came to 322KB — which an MCP client refuses outright, so the tool
+  // returned nothing usable at all. These fields are 26KB for the same rows.
+  // Anything deeper belongs to a per-campaign tool, where one row can afford it.
+  return {
+    campaigns: campaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      stopReason: c.stopReason ?? null,
+      funnelKey: c.funnelKey ?? null,
+      brandIds: c.brandIds ?? null,
+      workflowSlug: c.workflowSlug ?? null,
+      maxBudgetDailyUsd: c.maxBudgetDailyUsd ?? null,
+      createdAt: c.createdAt ?? null,
+      updatedAt: c.updatedAt ?? null,
+    })),
+  };
 }
 
 async function handleCampaignStats(args: Record<string, unknown>) {
-  const result = await callApi(`/v1/campaigns/${args.campaign_id}/stats`);
+  const result = await callApi<Record<string, unknown>>(
+    `/v1/campaigns/${args.campaign_id}/stats`,
+  );
 
   if (result.error) {
     throw new Error(result.error);
   }
 
-  return result.data;
+  return withoutOpens(result.data as Record<string, unknown>);
 }
 
-
-
+/**
+ * Opens are not a number this platform reports, anywhere.
+ *
+ * Apple Mail Privacy Protection pre-fetches images, so an open count measures the
+ * proxy rather than the person; the funnel we answer for is sent, click, positive
+ * reply. The gateway still carries the field, and a tool that passes its response
+ * through carries it too — which is how a retired metric reaches a customer inside
+ * their MCP client. Stripped at every depth: the payload nests opens in
+ * `recipientStats`, `emailStats`, and once per entry of `emailStats.stepStats`.
+ */
+function withoutOpens(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutOpens);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([k]) => k !== "opened" && k !== "openRate" && k !== "opens")
+        .map(([k, v]) => [k, withoutOpens(v)]),
+    );
+  }
+  return value;
+}
 
 async function handleListBrands() {
   const result = await callApi("/v1/brands");
@@ -191,16 +234,44 @@ async function handleListBrands() {
 }
 
 async function handleSuggestIcp(args: Record<string, unknown>) {
-  const result = await callApi("/v1/brand/icp-suggestion", {
-    method: "POST",
-    body: {
-      brandUrl: args.brand_url,
-    },
-  });
+  // This used to call the gateway's singular brand ICP path. That route is registered
+  // and listed in the API registry, and it 404s on every call — it forwards to a
+  // brand-service route that does not exist. The working one is per-brand, and the
+  // gateway already proxies it correctly.
+  //
+  // That route takes a brand id rather than a URL, so the brand is resolved here: the
+  // caller names a site, which is what a person knows, and an id they would have to look
+  // up first is a worse tool.
+  const brandUrl = String(args.brand_url ?? "");
+  const wanted = hostnameOf(brandUrl);
+  if (!wanted) throw new Error(`Not a URL: ${brandUrl}`);
+
+  const brands = await callApi<{ brands: Array<{ id: string; domain?: string | null }> }>("/v1/brands");
+  if (brands.error) throw new Error(brands.error);
+
+  const match = (brands.data as { brands: Array<{ id: string; domain?: string | null }> }).brands
+    .find((b) => b.domain && hostnameOf(`https://${b.domain}`) === wanted);
+
+  if (!match) {
+    throw new Error(
+      `No brand on this organization matches ${wanted}. Use distribute_list_brands to see what is available.`,
+    );
+  }
+
+  const result = await callApi(`/v1/brands/${match.id}/icp/suggest`, { method: "POST", body: {} });
 
   if (result.error) {
     throw new Error(result.error);
   }
 
   return result.data;
+}
+
+/** Bare hostname, `www.` dropped, so acme.com and https://www.acme.com/ are one brand. */
+function hostnameOf(url: string): string | null {
+  try {
+    return new URL(url.includes("://") ? url : `https://${url}`).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return null;
+  }
 }

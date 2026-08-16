@@ -87,7 +87,7 @@ describe("the customer surface is read-only", () => {
     // nothing on the account.
     const posts = src.match(/method: "(POST|PUT|PATCH|DELETE)"/g) ?? [];
     expect(posts).toEqual(['method: "POST"']);
-    expect(src).toContain("/v1/brand/icp-suggestion");
+    expect(src).toContain("/icp/suggest");
     expect(src).not.toContain("/v1/campaigns\", {");
   });
 
@@ -142,5 +142,96 @@ describe("the displayed server name", () => {
 
   it("introduces the server to a client as distribute", () => {
     expect(read("src/index.ts")).toContain('name: "distribute"');
+  });
+});
+
+/**
+ * A tool response has to fit in the client that asked for it.
+ *
+ * `list_campaigns` returned the gateway's row verbatim — 34 fields per campaign,
+ * the whole offer among them — and one real account's 134 campaigns came to 322KB,
+ * which an MCP client refuses outright. The tool returned nothing usable at all.
+ * The projection below is 26KB for the same rows.
+ */
+describe("list_campaigns is a projection, not the row", () => {
+  const src = read("src/tools/index.ts");
+
+  it("does not hand back the gateway response verbatim", () => {
+    const body = src.slice(
+      src.indexOf("async function handleListCampaigns("),
+      src.indexOf("async function handleCampaignStats("),
+    );
+    expect(body.length).toBeGreaterThan(0);
+    expect(body).toContain("campaigns.map(");
+    expect(body).not.toMatch(/return result\.data;/);
+  });
+
+  it("omits the offer, the heaviest field and the one that answers nothing here", () => {
+    const body = src.slice(
+      src.indexOf("async function handleListCampaigns("),
+      // Stop at the projection's closing brace: the doc comment BELOW this function
+      // names the omitted field, and a slice that ran past it would fail on prose.
+      src.indexOf("  };\n}", src.indexOf("async function handleListCampaigns(")),
+    );
+    expect(body.length).toBeGreaterThan(0);
+    expect(body).not.toContain("feature" + "Inputs");
+  });
+
+  it("filters on the vocabulary the platform stores", () => {
+    // The field is optional, so the enum sits inside the wrapper.
+    const schema = toolDefinitions.distribute_list_campaigns.schema;
+    expect(schema.safeParse({ status: "ongoing" }).success).toBe(true);
+    expect(schema.safeParse({ status: "active" }).success).toBe(false);
+  });
+});
+
+/**
+ * Opens are not a number this platform reports, anywhere — Apple Mail Privacy
+ * Protection pre-fetches images, so the count measures the proxy. The gateway
+ * still carries the field, and passing its response through carried it too.
+ */
+describe("campaign_stats reports no opens", () => {
+  it("strips them at every depth", async () => {
+    const { callApi } = await import("../src/lib/api-client.js");
+    vi.mocked(callApi).mockResolvedValue({
+      data: {
+        campaignId: "c1",
+        recipientStats: { sent: 10, opened: 3, clicked: 1 },
+        emailStats: {
+          sent: 10,
+          opened: 3,
+          stepStats: [{ step: 1, sent: 10, opened: 3, clicked: 1 }],
+        },
+      },
+    });
+
+    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as {
+      recipientStats: Record<string, unknown>;
+      emailStats: { stepStats: Array<Record<string, unknown>> };
+    };
+
+    expect(JSON.stringify(out)).not.toContain("opened");
+    expect(out.recipientStats.sent).toBe(10);
+    expect(out.recipientStats.clicked).toBe(1);
+    expect(out.emailStats.stepStats[0]!.sent).toBe(10);
+  });
+});
+
+/**
+ * The gateway's singular brand ICP path is registered, listed in the API
+ * registry, and 404s on every call: it forwards to a brand-service route that does
+ * not exist. The working one is per-brand.
+ */
+describe("suggest_icp calls the route that exists", () => {
+  const src = read("src/tools/index.ts");
+
+  it("does not call the dead singular path", () => {
+    // Split so this guard's own prose cannot satisfy it.
+    expect(src).not.toContain("/v1/brand/" + "icp-suggestion");
+  });
+
+  it("resolves the brand and posts to its own icp route", () => {
+    expect(src).toContain("/icp/suggest");
+    expect(src).toContain('callApi<{ brands: Array<{ id: string; domain?: string | null }> }>("/v1/brands")');
   });
 });
