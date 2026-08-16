@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the api-client module before importing tools
 vi.mock("../src/lib/api-client.js", () => ({
-  getConfigStatus: vi.fn(() => ({ configured: true, apiUrl: "https://api.mcpfactory.org" })),
+  getConfigStatus: vi.fn(() => ({ configured: true, apiUrl: "https://api.distribute.you" })),
   callApi: vi.fn(),
   setApiKey: vi.fn(),
   getApiKey: vi.fn(() => "test-key"),
@@ -18,10 +18,10 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("mcpfactory_list_workflows", () => {
+describe("distribute_list_workflows", () => {
   const makeWorkflow = (overrides: Record<string, unknown> = {}) => ({
     id: "wf-1",
-    appId: "mcpfactory",
+    appId: "distribute",
     orgId: "org-1",
     name: "sales-email-cold-outreach-sienna",
     displayName: null,
@@ -44,7 +44,7 @@ describe("mcpfactory_list_workflows", () => {
       },
     });
 
-    const result = await handleToolCall("mcpfactory_list_workflows", {});
+    const result = await handleToolCall("distribute_list_workflows", {});
 
     expect(mockCallApi).toHaveBeenCalledWith("/v1/workflows");
     expect(result).toEqual({
@@ -69,7 +69,7 @@ describe("mcpfactory_list_workflows", () => {
       data: { workflows: [] },
     });
 
-    await handleToolCall("mcpfactory_list_workflows", { category: "sales" });
+    await handleToolCall("distribute_list_workflows", { category: "sales" });
 
     expect(mockCallApi).toHaveBeenCalledWith("/v1/workflows?category=sales");
   });
@@ -79,7 +79,7 @@ describe("mcpfactory_list_workflows", () => {
       data: { workflows: [] },
     });
 
-    await handleToolCall("mcpfactory_list_workflows", { human_id: "human-abc123" });
+    await handleToolCall("distribute_list_workflows", { human_id: "human-abc123" });
 
     expect(mockCallApi).toHaveBeenCalledWith("/v1/workflows?humanId=human-abc123");
   });
@@ -89,7 +89,7 @@ describe("mcpfactory_list_workflows", () => {
       data: { workflows: [] },
     });
 
-    await handleToolCall("mcpfactory_list_workflows", { category: "sales", human_id: "human-abc123" });
+    await handleToolCall("distribute_list_workflows", { category: "sales", human_id: "human-abc123" });
 
     expect(mockCallApi).toHaveBeenCalledWith("/v1/workflows?category=sales&humanId=human-abc123");
   });
@@ -109,7 +109,7 @@ describe("mcpfactory_list_workflows", () => {
       },
     });
 
-    const result = (await handleToolCall("mcpfactory_list_workflows", {})) as {
+    const result = (await handleToolCall("distribute_list_workflows", {})) as {
       workflows: Array<Record<string, unknown>>;
     };
 
@@ -133,7 +133,7 @@ describe("mcpfactory_list_workflows", () => {
       },
     });
 
-    const result = (await handleToolCall("mcpfactory_list_workflows", {})) as {
+    const result = (await handleToolCall("distribute_list_workflows", {})) as {
       workflows: Array<Record<string, unknown>>;
     };
 
@@ -143,6 +143,6 @@ describe("mcpfactory_list_workflows", () => {
   it("throws on API error", async () => {
     mockCallApi.mockResolvedValue({ error: "Unauthorized" });
 
-    await expect(handleToolCall("mcpfactory_list_workflows", {})).rejects.toThrow("Unauthorized");
+    await expect(handleToolCall("distribute_list_workflows", {})).rejects.toThrow("Unauthorized");
   });
 });
