@@ -1,5 +1,5 @@
 export const BRAND = {
-  name: "MCP Factory",
+  name: "distribute",
   tagline: "The DFY, BYOK MCP Platform",
   hero: "From URL to Revenue",
   license: "MIT",

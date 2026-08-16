@@ -50,7 +50,7 @@ ${workflowTable}
 ## Quick Start
 
 \`\`\`bash
-# Add MCP Factory to your MCP config
+# Add distribute to your MCP config
 {
   "mcpServers": {
     "distribute": {

@@ -77,7 +77,7 @@ app.post("/mcp", async (req: Request, res: Response) => {
       
       // Create MCP server for this session
       const mcpServer = new McpServer({
-        name: "MCP Factory",
+        name: "distribute",
         version: "0.1.0",
       });
 
