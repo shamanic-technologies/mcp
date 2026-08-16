@@ -68,11 +68,11 @@
                 "status": {
                   "type": "string",
                   "enum": [
-                    "active",
+                    "ongoing",
                     "stopped",
                     "all"
                   ],
-                  "description": "Filter by campaign status"
+                  "description": "Filter by campaign status. `ongoing` is the vocabulary the platform stores — an unrecognised value is not refused, it is ignored, and the whole list comes back."
                 }
               },
               "additionalProperties": false
@@ -386,11 +386,11 @@
                   "status": {
                     "type": "string",
                     "enum": [
-                      "active",
+                      "ongoing",
                       "stopped",
                       "all"
                     ],
-                    "description": "Filter by campaign status"
+                    "description": "Filter by campaign status. `ongoing` is the vocabulary the platform stores — an unrecognised value is not refused, it is ignored, and the whole list comes back."
                   }
                 },
                 "additionalProperties": false

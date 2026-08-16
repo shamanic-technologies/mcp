@@ -139,10 +139,13 @@ describe("distribute_list_campaigns", () => {
   it("offers the status vocabulary the gateway serves, and not a word it does not", () => {
     const schema = toolDefinitions.distribute_list_campaigns.schema;
 
-    expect(schema.safeParse({ status: "active" }).success).toBe(true);
+    // Measured against production: asking for `active` returned 132 stopped rows
+    // beside 2 running ones — the platform stores `ongoing`, and the gateway ignores
+    // a status it does not recognise rather than refusing it, so the filter silently
+    // did nothing at all.
+    expect(schema.safeParse({ status: "ongoing" }).success).toBe(true);
     expect(schema.safeParse({ status: "stopped" }).success).toBe(true);
     expect(schema.safeParse({ status: "all" }).success).toBe(true);
-    // A campaign is never `ongoing` to api-service, so asking for one matched nothing.
-    expect(schema.safeParse({ status: "ongoing" }).success).toBe(false);
+    expect(schema.safeParse({ status: "active" }).success).toBe(false);
   });
 });
