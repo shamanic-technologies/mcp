@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      '@mcpfactory/content':
+      '@distribute/content':
         specifier: workspace:*
         version: link:shared/content
       '@modelcontextprotocol/sdk':

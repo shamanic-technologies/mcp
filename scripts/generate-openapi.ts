@@ -149,14 +149,14 @@ for (const [name, def] of Object.entries(toolDefinitions)) {
 const spec = {
   openapi: "3.0.0",
   info: {
-    title: "MCPFactory MCP Service",
+    title: "distribute MCP Service",
     description:
-      "MCP (Model Context Protocol) server for MCPFactory. Exposes campaign management tools via MCP protocol over HTTP.",
+      "MCP (Model Context Protocol) server for distribute. Exposes campaign management tools via MCP protocol over HTTP.",
     version: "0.1.0",
   },
   servers: [
     {
-      url: process.env.SERVICE_URL || "https://mcp.mcpfactory.org",
+      url: process.env.SERVICE_URL || "https://mcp.distribute.you",
     },
   ],
   security: [{ bearerAuth: [] }],
@@ -165,7 +165,7 @@ const spec = {
       bearerAuth: {
         type: "http",
         scheme: "bearer",
-        description: "MCPFactory API key",
+        description: "distribute API key",
       },
     },
     schemas: toolSchemas,

@@ -53,11 +53,11 @@ ${workflowTable}
 # Add MCP Factory to your MCP config
 {
   "mcpServers": {
-    "mcpfactory": {
+    "distribute": {
       "command": "npx",
-      "args": ["@mcpfactory/mcp-service"],
+      "args": ["@distribute/mcp-service"],
       "env": {
-        "MCPFACTORY_API_KEY": "your-api-key"
+        "DISTRIBUTE_API_KEY": "your-api-key"
       }
     }
   }
@@ -128,7 +128,7 @@ This project is 100% open source. ${BRAND.license} License.
 ## Monorepo Structure
 
 \`\`\`
-mcpfactory/
+distribute/
 ├── apps/
 │   ├── api-service/    # Backend API
 │   ├── dashboard/      # ${URLS.dashboard.replace("https://", "")}

@@ -1,8 +1,15 @@
 /**
- * API Client for calling MCPFactory services
+ * Client for the distribute API gateway.
+ *
+ * The key travels as `Authorization: Bearer <key>`, which is what api-service
+ * validates a customer key with. It used to go out under the gateway's
+ * admin-key header instead — a SEPARATE auth path reserved for the platform
+ * key, which answers a customer key with `401 Invalid admin key`. Every tool in
+ * this server failed on its first call because of it, so do not reintroduce
+ * that header: the key this server receives is already a Bearer, and stays one.
  */
 
-const API_BASE_URL = process.env.MCPFACTORY_API_URL || "https://api.mcpfactory.org";
+const API_BASE_URL = process.env.DISTRIBUTE_API_URL || "https://api.distribute.you";
 
 interface ApiResponse<T> {
   data?: T;
@@ -23,7 +30,7 @@ export function getApiKey(): string | null {
 export async function callApi<T>(
   path: string,
   options: {
-    method?: "GET" | "POST" | "PUT" | "DELETE";
+    method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
     apiKey?: string;
   } = {}
@@ -40,7 +47,7 @@ export async function callApi<T>(
       method,
       headers: {
         "Content-Type": "application/json",
-        "X-API-Key": key,
+        Authorization: `Bearer ${key}`,
       },
       body: body ? JSON.stringify(body) : undefined,
     });

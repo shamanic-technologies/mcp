@@ -3,30 +3,34 @@ import { getConfigStatus, callApi } from "../lib/api-client.js";
 
 // Tool definitions with Zod schemas
 export const toolDefinitions = {
-  mcpfactory_status: {
-    description: "Check MCPFactory connection status and configuration",
+  distribute_status: {
+    description: "Check the distribute connection status and configuration",
     schema: z.object({}),
   },
-  mcpfactory_list_workflows: {
-    description: "List all available workflows with their descriptions and categories. Includes styled workflows generated in the style of industry experts (e.g. Hormozi). Use the returned 'name' field as the workflow_name when creating a campaign.",
+  distribute_list_workflows: {
+    description: "List all available workflows with their descriptions and categories. Includes styled workflows generated in the style of industry experts (e.g. Hormozi). Use the returned 'name' field as the workflow_dynasty_slug when creating a campaign.",
     schema: z.object({
       category: z.enum(["sales", "pr"]).optional().describe("Filter by workflow category"),
       human_id: z.string().optional().describe("Filter by human expert ID (for styled workflows)"),
     }),
   },
-  mcpfactory_create_campaign: {
-    description: "Create and immediately start a cold email campaign. Provide a URL, describe your target audience in plain text, and set a budget. The system automatically finds matching leads via AI.",
+  distribute_create_campaign: {
+    description: "Create and immediately start a cold email campaign. Provide a URL, describe your target audience in plain text, name the sales funnel it sells through, and set a budget. The system finds matching leads automatically.",
     schema: z.object({
       name: z.string().describe("Campaign name"),
-      workflow_name: z.string().describe("Workflow name (e.g. 'sales-email-cold-outreach-sienna'). Use mcpfactory_list_workflows to see available workflows."),
+      workflow_dynasty_slug: z.string().describe("Workflow lineage slug (e.g. 'sales-email-cold-outreach-sienna'). Use distribute_list_workflows to see what is available; the latest version is resolved for you."),
+      feature_dynasty_slug: z.string().describe("Feature lineage slug the campaign runs under (e.g. 'sales-cold-email-outreach')."),
+      funnel_key: z
+        .enum(["reply_meeting", "visit_meeting", "visit_signup", "visit_form"])
+        .describe("The sales funnel this campaign sells through. It is what the campaign is paced and priced on, so a sales campaign cannot be created without one."),
       brand_url: z.string().describe("Your brand/company URL to promote"),
       target_audience: z.string().describe("Plain text description of your ideal customers (e.g. 'CTOs at SaaS startups with 10-50 employees in the US')"),
       target_outcome: z.string().describe("What you want to achieve with this campaign (e.g. 'Book sales demos', 'Recruit community ambassadors', 'Get press coverage')"),
-      value_for_target: z.string().describe("What the target audience gains from responding (e.g. 'Access to an enterprise-grade analytics platform at startup pricing', 'Join a growing international community with competitive compensation')"),
-      urgency: z.string().describe("Time-based constraint that motivates action now (e.g. 'Recruitment closes in 30 days', 'Price doubles after March 1st')"),
-      scarcity: z.string().describe("Supply-based constraint on availability (e.g. 'Only 10 spots available worldwide', 'Limited to 50 participants')"),
-      risk_reversal: z.string().describe("Guarantee or safety net that removes risk for the prospect (e.g. 'Free trial for 2 weeks, no commitment', 'Phone screening call before any obligation')"),
-      social_proof: z.string().describe("Evidence of credibility and traction (e.g. 'Backed by 60 sponsors including X, Y, Z', '500+ companies already onboarded')"),
+      value_for_target: z.string().describe("What the target audience gains from responding (e.g. 'Access to an enterprise-grade analytics platform at startup pricing')"),
+      urgency: z.string().describe("Time-based constraint that motivates action now (e.g. 'Recruitment closes in 30 days')"),
+      scarcity: z.string().describe("Supply-based constraint on availability (e.g. 'Only 10 spots available worldwide')"),
+      risk_reversal: z.string().describe("Guarantee or safety net that removes risk for the prospect (e.g. 'Free trial for 2 weeks, no commitment')"),
+      social_proof: z.string().describe("Evidence of credibility and traction (e.g. '500+ companies already onboarded')"),
       max_daily_budget_usd: z.number().optional().describe("Maximum daily spend in USD (at least one budget required)"),
       max_weekly_budget_usd: z.number().optional().describe("Maximum weekly spend in USD"),
       max_monthly_budget_usd: z.number().optional().describe("Maximum monthly spend in USD"),
@@ -35,83 +39,64 @@ export const toolDefinitions = {
       end_date: z.string().optional().describe("Optional campaign end date (ISO format)"),
     }),
   },
-  mcpfactory_list_campaigns: {
+  distribute_list_campaigns: {
     description: "List all your cold email campaigns",
     schema: z.object({
       status: z.enum(["ongoing", "stopped", "all"]).optional().describe("Filter by campaign status"),
     }),
   },
-  mcpfactory_stop_campaign: {
+  distribute_stop_campaign: {
     description: "Stop a running campaign",
     schema: z.object({
       campaign_id: z.string().describe("Campaign ID to stop"),
     }),
   },
-  mcpfactory_resume_campaign: {
-    description: "Resume a stopped campaign",
-    schema: z.object({
-      campaign_id: z.string().describe("Campaign ID to resume"),
-    }),
-  },
-  mcpfactory_campaign_stats: {
+  distribute_campaign_stats: {
     description: "Get statistics for a specific campaign",
     schema: z.object({
       campaign_id: z.string().describe("Campaign ID to get stats for"),
     }),
   },
-  mcpfactory_campaign_debug: {
-    description: "Get detailed debug info for a campaign: status, all runs, errors, and pipeline state",
-    schema: z.object({
-      campaign_id: z.string().describe("Campaign ID to debug"),
-    }),
-  },
-  mcpfactory_list_brands: {
+  distribute_list_brands: {
     description: "List all your brands (companies/websites you promote through campaigns)",
     schema: z.object({}),
   },
-  mcpfactory_suggest_icp: {
+  distribute_suggest_icp: {
     description:
-      "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of ideal customers that can be used as the target_audience in mcpfactory_create_campaign.",
+      "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of ideal customers that can be used as the target_audience in distribute_create_campaign.",
     schema: z.object({
       brand_url: z.string().describe("The brand/company URL to analyze for ICP extraction"),
     }),
   },
 };
-
 // Tool handlers
 export async function handleToolCall(
   name: string,
   args: Record<string, unknown>
 ): Promise<unknown> {
   switch (name) {
-    case "mcpfactory_status":
+    case "distribute_status":
       return handleStatus();
 
-    case "mcpfactory_list_workflows":
+    case "distribute_list_workflows":
       return handleListWorkflows(args);
 
-    case "mcpfactory_create_campaign":
+    case "distribute_create_campaign":
       return handleCreateCampaign(args);
 
-    case "mcpfactory_list_campaigns":
+    case "distribute_list_campaigns":
       return handleListCampaigns(args);
 
-    case "mcpfactory_campaign_stats":
+    case "distribute_campaign_stats":
       return handleCampaignStats(args);
 
-    case "mcpfactory_campaign_debug":
-      return handleCampaignDebug(args);
-
-    case "mcpfactory_stop_campaign":
+    case "distribute_stop_campaign":
       return handleStopCampaign(args);
 
-    case "mcpfactory_resume_campaign":
-      return handleResumeCampaign(args);
-
-    case "mcpfactory_list_brands":
+    case "distribute_list_brands":
       return handleListBrands();
 
-    case "mcpfactory_suggest_icp":
+    case "distribute_suggest_icp":
       return handleSuggestIcp(args);
 
     default:
@@ -126,11 +111,11 @@ async function handleStatus() {
   if (!status.configured) {
     return {
       status: "not_configured",
-      message: "MCPFactory API key not configured",
+      message: "No distribute API key on this session",
       instructions: [
-        "1. Get your API key at https://dashboard.mcpfactory.org/settings/api",
-        "2. Set MCPFACTORY_API_KEY environment variable",
-        "3. Restart the MCP server",
+        "1. Create a key at https://dashboard.distribute.you — open your organization, then API Key.",
+        "2. Send it on every request as the header: Authorization: Bearer <your key>",
+        "3. In an MCP client, put that header in this server's configuration and reconnect.",
       ],
     };
   }
@@ -189,19 +174,29 @@ async function handleCreateCampaign(args: Record<string, unknown>) {
     throw new Error("At least one budget is required (max_daily_budget_usd, max_weekly_budget_usd, max_monthly_budget_usd, or max_total_budget_usd)");
   }
 
+  // The gateway takes the offer as opaque `featureInputs` (validated by
+  // key-presence against features-service, never inspected by api-service), the
+  // brand as a `brandUrls` array, and the workflow/feature as dynasty slugs so
+  // the latest version is resolved for us. The flat body this used to send —
+  // `workflowName`, `brandUrl`, and the levers at top level — matched no field
+  // the gateway declares, so every create was refused.
   const result = await callApi("/v1/campaigns", {
     method: "POST",
     body: {
       name: args.name,
-      workflowName: args.workflow_name,
-      brandUrl: args.brand_url,
-      targetAudience: args.target_audience,
-      targetOutcome: args.target_outcome,
-      valueForTarget: args.value_for_target,
-      urgency: args.urgency,
-      scarcity: args.scarcity,
-      riskReversal: args.risk_reversal,
-      socialProof: args.social_proof,
+      workflowDynastySlug: args.workflow_dynasty_slug,
+      featureDynastySlug: args.feature_dynasty_slug,
+      funnelKey: args.funnel_key,
+      brandUrls: [args.brand_url],
+      featureInputs: {
+        targetAudience: args.target_audience,
+        targetOutcome: args.target_outcome,
+        valueForTarget: args.value_for_target,
+        urgency: args.urgency,
+        scarcity: args.scarcity,
+        riskReversal: args.risk_reversal,
+        socialProof: args.social_proof,
+      },
       maxBudgetDailyUsd: args.max_daily_budget_usd,
       maxBudgetWeeklyUsd: args.max_weekly_budget_usd,
       maxBudgetMonthlyUsd: args.max_monthly_budget_usd,
@@ -239,15 +234,6 @@ async function handleCampaignStats(args: Record<string, unknown>) {
   return result.data;
 }
 
-async function handleCampaignDebug(args: Record<string, unknown>) {
-  const result = await callApi(`/v1/campaigns/${args.campaign_id}/debug`);
-
-  if (result.error) {
-    throw new Error(result.error);
-  }
-
-  return result.data;
-}
 
 async function handleStopCampaign(args: Record<string, unknown>) {
   const result = await callApi(`/v1/campaigns/${args.campaign_id}/stop`, {
@@ -261,17 +247,6 @@ async function handleStopCampaign(args: Record<string, unknown>) {
   return result.data;
 }
 
-async function handleResumeCampaign(args: Record<string, unknown>) {
-  const result = await callApi(`/v1/campaigns/${args.campaign_id}/resume`, {
-    method: "POST",
-  });
-
-  if (result.error) {
-    throw new Error(result.error);
-  }
-
-  return result.data;
-}
 
 async function handleListBrands() {
   const result = await callApi("/v1/brands");
