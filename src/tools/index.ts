@@ -8,9 +8,8 @@ export const toolDefinitions = {
     schema: z.object({}),
   },
   distribute_list_workflows: {
-    description: "List all available workflows with their descriptions and categories. Includes styled workflows generated in the style of industry experts (e.g. Hormozi). Use the returned 'name' field as the workflow_dynasty_slug when creating a campaign.",
+    description: "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi). Use the returned 'workflowDynastySlug' as the workflow_dynasty_slug when creating a campaign.",
     schema: z.object({
-      category: z.enum(["sales", "pr"]).optional().describe("Filter by workflow category"),
       human_id: z.string().optional().describe("Filter by human expert ID (for styled workflows)"),
     }),
   },
@@ -42,7 +41,7 @@ export const toolDefinitions = {
   distribute_list_campaigns: {
     description: "List all your cold email campaigns",
     schema: z.object({
-      status: z.enum(["ongoing", "stopped", "all"]).optional().describe("Filter by campaign status"),
+      status: z.enum(["active", "stopped", "all"]).optional().describe("Filter by campaign status"),
     }),
   },
   distribute_stop_campaign: {
@@ -139,8 +138,10 @@ async function handleStatus() {
 }
 
 async function handleListWorkflows(args: Record<string, unknown>) {
+  // The gateway filters on humanId, featureSlug, featureDynastySlug, workflowSlug
+  // and workflowDynastySlug — there is no category filter, so one sent here was
+  // dropped on the floor and the caller got the unfiltered list back.
   const params = new URLSearchParams();
-  if (args.category) params.set("category", args.category as string);
   if (args.human_id) params.set("humanId", args.human_id as string);
 
   const queryString = params.toString();
@@ -153,17 +154,22 @@ async function handleListWorkflows(args: Record<string, unknown>) {
 
   const workflows = (result.data as { workflows: Array<Record<string, unknown>> }).workflows;
 
+  // Field names as the deployed gateway serves them. This used to read `name`,
+  // `description`, `signatureName` and `styleName`, none of which are in the
+  // response any more, so every workflow came back as a row of undefined —
+  // including the slug a campaign has to name.
   return {
     workflows: workflows.map((wf) => ({
-      name: wf.name,
-      displayName: wf.displayName || wf.name,
-      description: wf.description,
-      category: wf.category,
-      channel: wf.channel,
-      audienceType: wf.audienceType,
-      signatureName: wf.signatureName,
-      humanId: wf.humanId ?? null,
-      styleName: wf.styleName ?? null,
+      workflowSlug: wf.workflowSlug,
+      workflowDynastySlug: wf.workflowDynastySlug,
+      displayName: wf.displayName || wf.workflowDynastyName || wf.workflowName,
+      version: wf.version ?? null,
+      category: wf.category ?? null,
+      channel: wf.channel ?? null,
+      audienceType: wf.audienceType ?? null,
+      featureSlug: wf.featureSlug ?? null,
+      signatureName: wf.workflowDynastySignatureName ?? null,
+      status: wf.status ?? null,
     })),
   };
 }
