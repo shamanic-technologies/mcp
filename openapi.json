@@ -39,21 +39,13 @@
         }
       },
       "distribute_list_workflows": {
-        "description": "List all available workflows with their descriptions and categories. Includes styled workflows generated in the style of industry experts (e.g. Hormozi). Use the returned 'name' field as the workflow_dynasty_slug when creating a campaign.",
+        "description": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi). Use the returned 'workflowDynastySlug' as the workflow_dynasty_slug when creating a campaign.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_workflows",
           "definitions": {
             "distribute_list_workflows": {
               "type": "object",
               "properties": {
-                "category": {
-                  "type": "string",
-                  "enum": [
-                    "sales",
-                    "pr"
-                  ],
-                  "description": "Filter by workflow category"
-                },
                 "human_id": {
                   "type": "string",
                   "description": "Filter by human expert ID (for styled workflows)"
@@ -183,7 +175,7 @@
                 "status": {
                   "type": "string",
                   "enum": [
-                    "ongoing",
+                    "active",
                     "stopped",
                     "all"
                   ],
@@ -458,7 +450,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List all available workflows with their descriptions and categories. Includes styled workflows generated in the style of industry experts (e.g. Hormozi). Use the returned 'name' field as the workflow_dynasty_slug when creating a campaign.",
+        "summary": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi). Use the returned 'workflowDynastySlug' as the workflow_dynasty_slug when creating a campaign.",
         "description": "MCP Tool: distribute_list_workflows. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_workflows\".",
         "requestBody": {
           "content": {
@@ -466,14 +458,6 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "category": {
-                    "type": "string",
-                    "enum": [
-                      "sales",
-                      "pr"
-                    ],
-                    "description": "Filter by workflow category"
-                  },
                   "human_id": {
                     "type": "string",
                     "description": "Filter by human expert ID (for styled workflows)"
@@ -673,7 +657,7 @@
                   "status": {
                     "type": "string",
                     "enum": [
-                      "ongoing",
+                      "active",
                       "stopped",
                       "all"
                     ],
