@@ -11,8 +11,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # The runner has no pnpm, so `pnpm install` used to fail before it ever
+      # reached a test. Pin the same version package.json declares.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter "./shared/*" build
       - run: pnpm test
+      - run: pnpm build

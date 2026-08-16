@@ -1,9 +1,10 @@
 {
-  "name": "@mcpfactory/mcp-service",
+  "name": "@distribute/mcp-service",
   "version": "0.1.0",
   "description": "MCP Server for Sales Cold Emails - From URL to Revenue",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc && pnpm generate:openapi",
@@ -13,7 +14,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@mcpfactory/content": "workspace:*",
+    "@distribute/content": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "@sentry/node": "^8.0.0",
     "cors": "^2.8.5",
