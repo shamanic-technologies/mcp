@@ -41,12 +41,17 @@ Call `distribute_status` first — it confirms the key reached the gateway, and 
 | `distribute_list_brands` | The brands (companies, websites) on the organization |
 | `distribute_list_workflows` | Available workflows, including ones written in a named expert's style |
 | `distribute_suggest_icp` | Read a brand's site and propose an ideal customer profile |
-| `distribute_create_campaign` | Start a cold email campaign |
 | `distribute_list_campaigns` | Every campaign, filterable by status |
 | `distribute_campaign_stats` | One campaign's numbers |
-| `distribute_stop_campaign` | Stop a running campaign |
 
-A campaign states the **sales funnel** it sells through (`reply_meeting`, `visit_meeting`, `visit_signup`, `visit_form`). That is what it gets paced and priced on, so `distribute_create_campaign` requires it rather than guessing one.
+**These tools read; they do not write.** A customer funds a sales funnel and picks
+audiences, and operating a campaign is something we do with them rather than
+something they spin up — the customer dashboard has exactly one campaign write in
+the whole app, at the end of onboarding. Tools to create and stop a campaign used
+to be here and were removed: they handed over the API an affordance the product
+does not give in the UI, and creating one this way produced a campaign with no
+funded funnel and no active audience, which is the half-state the dashboard's own
+blocker exists to catch.
 
 ## Running it locally
 

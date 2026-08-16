@@ -39,7 +39,7 @@
         }
       },
       "distribute_list_workflows": {
-        "description": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi). Use the returned 'workflowDynastySlug' as the workflow_dynasty_slug when creating a campaign.",
+        "description": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi).",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_workflows",
           "definitions": {
@@ -51,113 +51,6 @@
                   "description": "Filter by human expert ID (for styled workflows)"
                 }
               },
-              "additionalProperties": false
-            }
-          },
-          "$schema": "http://json-schema.org/draft-07/schema#"
-        }
-      },
-      "distribute_create_campaign": {
-        "description": "Create and immediately start a cold email campaign. Provide a URL, describe your target audience in plain text, name the sales funnel it sells through, and set a budget. The system finds matching leads automatically.",
-        "inputSchema": {
-          "$ref": "#/definitions/distribute_create_campaign",
-          "definitions": {
-            "distribute_create_campaign": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string",
-                  "description": "Campaign name"
-                },
-                "workflow_dynasty_slug": {
-                  "type": "string",
-                  "description": "Workflow lineage slug (e.g. 'sales-email-cold-outreach-sienna'). Use distribute_list_workflows to see what is available; the latest version is resolved for you."
-                },
-                "feature_dynasty_slug": {
-                  "type": "string",
-                  "description": "Feature lineage slug the campaign runs under (e.g. 'sales-cold-email-outreach')."
-                },
-                "funnel_key": {
-                  "type": "string",
-                  "enum": [
-                    "reply_meeting",
-                    "visit_meeting",
-                    "visit_signup",
-                    "visit_form"
-                  ],
-                  "description": "The sales funnel this campaign sells through. It is what the campaign is paced and priced on, so a sales campaign cannot be created without one."
-                },
-                "brand_url": {
-                  "type": "string",
-                  "description": "Your brand/company URL to promote"
-                },
-                "target_audience": {
-                  "type": "string",
-                  "description": "Plain text description of your ideal customers (e.g. 'CTOs at SaaS startups with 10-50 employees in the US')"
-                },
-                "target_outcome": {
-                  "type": "string",
-                  "description": "What you want to achieve with this campaign (e.g. 'Book sales demos', 'Recruit community ambassadors', 'Get press coverage')"
-                },
-                "value_for_target": {
-                  "type": "string",
-                  "description": "What the target audience gains from responding (e.g. 'Access to an enterprise-grade analytics platform at startup pricing')"
-                },
-                "urgency": {
-                  "type": "string",
-                  "description": "Time-based constraint that motivates action now (e.g. 'Recruitment closes in 30 days')"
-                },
-                "scarcity": {
-                  "type": "string",
-                  "description": "Supply-based constraint on availability (e.g. 'Only 10 spots available worldwide')"
-                },
-                "risk_reversal": {
-                  "type": "string",
-                  "description": "Guarantee or safety net that removes risk for the prospect (e.g. 'Free trial for 2 weeks, no commitment')"
-                },
-                "social_proof": {
-                  "type": "string",
-                  "description": "Evidence of credibility and traction (e.g. '500+ companies already onboarded')"
-                },
-                "max_daily_budget_usd": {
-                  "type": "number",
-                  "description": "Maximum daily spend in USD (at least one budget required)"
-                },
-                "max_weekly_budget_usd": {
-                  "type": "number",
-                  "description": "Maximum weekly spend in USD"
-                },
-                "max_monthly_budget_usd": {
-                  "type": "number",
-                  "description": "Maximum monthly spend in USD"
-                },
-                "max_total_budget_usd": {
-                  "type": "number",
-                  "description": "Maximum total spend in USD (campaign stops permanently when reached)"
-                },
-                "max_leads": {
-                  "type": "number",
-                  "description": "Maximum number of leads to contact (campaign stops permanently when reached)"
-                },
-                "end_date": {
-                  "type": "string",
-                  "description": "Optional campaign end date (ISO format)"
-                }
-              },
-              "required": [
-                "name",
-                "workflow_dynasty_slug",
-                "feature_dynasty_slug",
-                "funnel_key",
-                "brand_url",
-                "target_audience",
-                "target_outcome",
-                "value_for_target",
-                "urgency",
-                "scarcity",
-                "risk_reversal",
-                "social_proof"
-              ],
               "additionalProperties": false
             }
           },
@@ -182,28 +75,6 @@
                   "description": "Filter by campaign status"
                 }
               },
-              "additionalProperties": false
-            }
-          },
-          "$schema": "http://json-schema.org/draft-07/schema#"
-        }
-      },
-      "distribute_stop_campaign": {
-        "description": "Stop a running campaign",
-        "inputSchema": {
-          "$ref": "#/definitions/distribute_stop_campaign",
-          "definitions": {
-            "distribute_stop_campaign": {
-              "type": "object",
-              "properties": {
-                "campaign_id": {
-                  "type": "string",
-                  "description": "Campaign ID to stop"
-                }
-              },
-              "required": [
-                "campaign_id"
-              ],
               "additionalProperties": false
             }
           },
@@ -247,7 +118,7 @@
         }
       },
       "distribute_suggest_icp": {
-        "description": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of ideal customers that can be used as the target_audience in distribute_create_campaign.",
+        "description": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of the ideal customers to aim a campaign at.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_suggest_icp",
           "definitions": {
@@ -450,7 +321,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi). Use the returned 'workflowDynastySlug' as the workflow_dynasty_slug when creating a campaign.",
+        "summary": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi).",
         "description": "MCP Tool: distribute_list_workflows. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_workflows\".",
         "requestBody": {
           "content": {
@@ -463,148 +334,6 @@
                     "description": "Filter by human expert ID (for styled workflows)"
                   }
                 },
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Tool result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "content": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "example": "text"
-                          },
-                          "text": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/mcp/tools/distribute_create_campaign": {
-      "post": {
-        "tags": [
-          "MCP Tools"
-        ],
-        "summary": "Create and immediately start a cold email campaign. Provide a URL, describe your target audience in plain text, name the sales funnel it sells through, and set a budget. The system finds matching leads automatically.",
-        "description": "MCP Tool: distribute_create_campaign. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_create_campaign\".",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "name": {
-                    "type": "string",
-                    "description": "Campaign name"
-                  },
-                  "workflow_dynasty_slug": {
-                    "type": "string",
-                    "description": "Workflow lineage slug (e.g. 'sales-email-cold-outreach-sienna'). Use distribute_list_workflows to see what is available; the latest version is resolved for you."
-                  },
-                  "feature_dynasty_slug": {
-                    "type": "string",
-                    "description": "Feature lineage slug the campaign runs under (e.g. 'sales-cold-email-outreach')."
-                  },
-                  "funnel_key": {
-                    "type": "string",
-                    "enum": [
-                      "reply_meeting",
-                      "visit_meeting",
-                      "visit_signup",
-                      "visit_form"
-                    ],
-                    "description": "The sales funnel this campaign sells through. It is what the campaign is paced and priced on, so a sales campaign cannot be created without one."
-                  },
-                  "brand_url": {
-                    "type": "string",
-                    "description": "Your brand/company URL to promote"
-                  },
-                  "target_audience": {
-                    "type": "string",
-                    "description": "Plain text description of your ideal customers (e.g. 'CTOs at SaaS startups with 10-50 employees in the US')"
-                  },
-                  "target_outcome": {
-                    "type": "string",
-                    "description": "What you want to achieve with this campaign (e.g. 'Book sales demos', 'Recruit community ambassadors', 'Get press coverage')"
-                  },
-                  "value_for_target": {
-                    "type": "string",
-                    "description": "What the target audience gains from responding (e.g. 'Access to an enterprise-grade analytics platform at startup pricing')"
-                  },
-                  "urgency": {
-                    "type": "string",
-                    "description": "Time-based constraint that motivates action now (e.g. 'Recruitment closes in 30 days')"
-                  },
-                  "scarcity": {
-                    "type": "string",
-                    "description": "Supply-based constraint on availability (e.g. 'Only 10 spots available worldwide')"
-                  },
-                  "risk_reversal": {
-                    "type": "string",
-                    "description": "Guarantee or safety net that removes risk for the prospect (e.g. 'Free trial for 2 weeks, no commitment')"
-                  },
-                  "social_proof": {
-                    "type": "string",
-                    "description": "Evidence of credibility and traction (e.g. '500+ companies already onboarded')"
-                  },
-                  "max_daily_budget_usd": {
-                    "type": "number",
-                    "description": "Maximum daily spend in USD (at least one budget required)"
-                  },
-                  "max_weekly_budget_usd": {
-                    "type": "number",
-                    "description": "Maximum weekly spend in USD"
-                  },
-                  "max_monthly_budget_usd": {
-                    "type": "number",
-                    "description": "Maximum monthly spend in USD"
-                  },
-                  "max_total_budget_usd": {
-                    "type": "number",
-                    "description": "Maximum total spend in USD (campaign stops permanently when reached)"
-                  },
-                  "max_leads": {
-                    "type": "number",
-                    "description": "Maximum number of leads to contact (campaign stops permanently when reached)"
-                  },
-                  "end_date": {
-                    "type": "string",
-                    "description": "Optional campaign end date (ISO format)"
-                  }
-                },
-                "required": [
-                  "name",
-                  "workflow_dynasty_slug",
-                  "feature_dynasty_slug",
-                  "funnel_key",
-                  "brand_url",
-                  "target_audience",
-                  "target_outcome",
-                  "value_for_target",
-                  "urgency",
-                  "scarcity",
-                  "risk_reversal",
-                  "social_proof"
-                ],
                 "additionalProperties": false
               }
             }
@@ -664,63 +393,6 @@
                     "description": "Filter by campaign status"
                   }
                 },
-                "additionalProperties": false
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Tool result",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "content": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "type": {
-                            "type": "string",
-                            "example": "text"
-                          },
-                          "text": {
-                            "type": "string"
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/mcp/tools/distribute_stop_campaign": {
-      "post": {
-        "tags": [
-          "MCP Tools"
-        ],
-        "summary": "Stop a running campaign",
-        "description": "MCP Tool: distribute_stop_campaign. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_stop_campaign\".",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "campaign_id": {
-                    "type": "string",
-                    "description": "Campaign ID to stop"
-                  }
-                },
-                "required": [
-                  "campaign_id"
-                ],
                 "additionalProperties": false
               }
             }
@@ -868,7 +540,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of ideal customers that can be used as the target_audience in distribute_create_campaign.",
+        "summary": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of the ideal customers to aim a campaign at.",
         "description": "MCP Tool: distribute_suggest_icp. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_suggest_icp\".",
         "requestBody": {
           "content": {

@@ -65,71 +65,36 @@ describe("only tools the gateway can actually serve", () => {
 });
 
 /**
- * The create body used to be flat — `workflowName`, `brandUrl`, and the offer
- * levers at top level — which matched no field the gateway declares. It takes
- * dynasty slugs, a `brandUrls` array, and the offer as opaque `featureInputs`;
- * a sales campaign must also state the funnel it sells through, because that is
- * what it gets paced and priced on.
+ * The tools mirror what the CUSTOMER dashboard lets a person do. A customer funds
+ * a sales funnel and picks audiences; operating a campaign is a staff action in
+ * the admin console, and the customer dashboard has exactly one campaign write in
+ * the whole app — at the end of onboarding, right after payment.
+ *
+ * So this server writes NOTHING. `create_campaign` could not have worked anyway:
+ * onboarding funds a funnel in billing and activates the chosen audiences around
+ * that call, and a tool doing neither lands a campaign with no money and no
+ * audience.
  */
-describe("create_campaign speaks the gateway's body", () => {
-  const validArgs = {
-    name: "Q3 outreach",
-    workflow_dynasty_slug: "sales-email-cold-outreach-sienna",
-    feature_dynasty_slug: "sales-cold-email-outreach",
-    funnel_key: "reply_meeting",
-    brand_url: "https://acme.com",
-    target_audience: "CTOs at SaaS startups",
-    target_outcome: "Book sales demos",
-    value_for_target: "Analytics at startup pricing",
-    urgency: "Closes in 30 days",
-    scarcity: "10 spots",
-    risk_reversal: "Two-week trial",
-    social_proof: "500 companies onboarded",
-    max_daily_budget_usd: 50,
-  };
-
-  it("sends dynasty slugs, a brand array, the funnel and opaque feature inputs", async () => {
-    mockCallApi.mockResolvedValue({ data: { campaign: { id: "c1" } } });
-
-    await handleToolCall("distribute_create_campaign", validArgs);
-
-    const [path, options] = mockCallApi.mock.calls[0]!;
-    expect(path).toBe("/v1/campaigns");
-
-    const body = (options as { body: Record<string, unknown> }).body;
-    expect(body.workflowDynastySlug).toBe("sales-email-cold-outreach-sienna");
-    expect(body.featureDynastySlug).toBe("sales-cold-email-outreach");
-    expect(body.funnelKey).toBe("reply_meeting");
-    expect(body.brandUrls).toEqual(["https://acme.com"]);
-    expect(body.featureInputs).toEqual({
-      targetAudience: "CTOs at SaaS startups",
-      targetOutcome: "Book sales demos",
-      valueForTarget: "Analytics at startup pricing",
-      urgency: "Closes in 30 days",
-      scarcity: "10 spots",
-      riskReversal: "Two-week trial",
-      socialProof: "500 companies onboarded",
-    });
-
-    // The shapes the gateway does not declare must be gone.
-    expect(body).not.toHaveProperty("workflowName");
-    expect(body).not.toHaveProperty("brandUrl");
-    expect(body).not.toHaveProperty("targetAudience");
+describe("the customer surface is read-only", () => {
+  it("exposes no tool that creates or stops a campaign", () => {
+    expect(toolDefinitions).not.toHaveProperty("distribute_create_campaign");
+    expect(toolDefinitions).not.toHaveProperty("distribute_stop_campaign");
   });
 
-  it("still refuses a campaign with no budget at all", async () => {
-    await expect(
-      handleToolCall("distribute_create_campaign", {
-        ...validArgs,
-        max_daily_budget_usd: undefined,
-      }),
-    ).rejects.toThrow(/budget is required/);
+  it("calls the gateway with no mutating verb", () => {
+    const src = read("src/tools/index.ts");
+    // The one POST left reads: an ICP suggestion computes an answer and stores
+    // nothing on the account.
+    const posts = src.match(/method: "(POST|PUT|PATCH|DELETE)"/g) ?? [];
+    expect(posts).toEqual(['method: "POST"']);
+    expect(src).toContain("/v1/brand/icp-suggestion");
+    expect(src).not.toContain("/v1/campaigns\", {");
   });
 
-  it("requires the sales funnel, so a campaign cannot be created unpriced", () => {
-    const schema = toolDefinitions.distribute_create_campaign.schema;
-    const parsed = schema.safeParse({ ...validArgs, funnel_key: undefined });
-    expect(parsed.success).toBe(false);
+  it("describes no tool by an action it cannot perform", () => {
+    for (const def of Object.values(toolDefinitions)) {
+      expect(def.description).not.toMatch(/creat(e|ing) a campaign/i);
+    }
   });
 });
 
