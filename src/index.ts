@@ -77,7 +77,7 @@ app.post("/mcp", async (req: Request, res: Response) => {
       
       // Create MCP server for this session
       const mcpServer = new McpServer({
-        name: "MCP Factory",
+        name: "distribute",
         version: "0.1.0",
       });
 
@@ -203,9 +203,9 @@ app.use((_req, res) => {
   res.status(404).json({ error: "Not found" });
 });
 
-// Listen on :: for Railway private networking (IPv4 & IPv6 support)
+// Listen on :: so both IPv4 and IPv6 callers reach the container
 app.listen(Number(PORT), "::", () => {
-  console.log(`MCPFactory MCP Server running on port ${PORT}`);
+  console.log(`distribute MCP server running on port ${PORT}`);
   console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
 });
 

@@ -1,7 +1,7 @@
 {
-  "name": "@mcpfactory/mcp-service",
+  "name": "@distribute/mcp-service",
   "version": "0.1.0",
-  "description": "MCP Server for Sales Cold Emails - From URL to Revenue",
+  "description": "Remote MCP server for distribute — drive your distribute account from any MCP client",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,7 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@mcpfactory/content": "workspace:*",
+    "@distribute/content": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "@sentry/node": "^8.0.0",
     "cors": "^2.8.5",

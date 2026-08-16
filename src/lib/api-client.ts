@@ -1,8 +1,8 @@
 /**
- * API Client for calling MCPFactory services
+ * API Client for calling the distribute API gateway
  */
 
-const API_BASE_URL = process.env.MCPFACTORY_API_URL || "https://api.mcpfactory.org";
+const API_BASE_URL = process.env.DISTRIBUTE_API_URL || "https://api.distribute.you";
 
 interface ApiResponse<T> {
   data?: T;
@@ -40,7 +40,7 @@ export async function callApi<T>(
       method,
       headers: {
         "Content-Type": "application/json",
-        "X-API-Key": key,
+        Authorization: `Bearer ${key}`,
       },
       body: body ? JSON.stringify(body) : undefined,
     });
