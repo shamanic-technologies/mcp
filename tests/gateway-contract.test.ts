@@ -160,11 +160,11 @@ describe("the unconfigured message points at the real key page", () => {
 });
 
 /**
- * The name a client DISPLAYS for this server. It read "MCP Factory" — a spaced,
- * title-cased variant that a `mcpfactory` grep does not match, so it survived the
- * rename and was the first thing an MCP client showed the user. Checked against
- * the files that carry it rather than the whole repo, because this guard's own
- * prose names the retired brand.
+ * The name a client DISPLAYS for this server. It read the retired brand spaced
+ * and title-cased, a variant the unspaced grep does not match, so it survived
+ * the rename and was the first thing an MCP client showed the user. Checked
+ * against the files that carry the name rather than the whole repo, so this
+ * guard's own prose cannot fail it.
  */
 describe("the displayed server name", () => {
   const named = ["src/index.ts", "shared/content/src/brand.ts", "shared/content/src/features.ts"];
