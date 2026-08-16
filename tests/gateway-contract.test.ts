@@ -158,3 +158,24 @@ describe("the unconfigured message points at the real key page", () => {
     expect(text.toLowerCase()).not.toContain(RETIRED_BRAND);
   });
 });
+
+/**
+ * The name a client DISPLAYS for this server. It read "MCP Factory" — a spaced,
+ * title-cased variant that a `mcpfactory` grep does not match, so it survived the
+ * rename and was the first thing an MCP client showed the user. Checked against
+ * the files that carry it rather than the whole repo, because this guard's own
+ * prose names the retired brand.
+ */
+describe("the displayed server name", () => {
+  const named = ["src/index.ts", "shared/content/src/brand.ts", "shared/content/src/features.ts"];
+
+  it("carries no spaced or title-cased variant of the retired brand", () => {
+    for (const rel of named) {
+      expect(read(rel)).not.toMatch(/mcp[ _-]?factory/i);
+    }
+  });
+
+  it("introduces the server to a client as distribute", () => {
+    expect(read("src/index.ts")).toContain('name: "distribute"');
+  });
+});
