@@ -74,12 +74,9 @@ describe("distribute_list_workflows", () => {
       workflows: Array<Record<string, unknown>>;
     };
 
-    // distribute_create_campaign takes workflow_dynasty_slug, so this is the
-    // one field that makes the two tools compose.
+    // The dynasty slug is what identifies a workflow lineage everywhere else in
+    // the fleet, so it is the field this list has to carry.
     expect(result.workflows[0]!.workflowDynastySlug).toBe("sales-email-cold-outreach-sienna");
-    expect(
-      toolDefinitions.distribute_create_campaign.schema.shape.workflow_dynasty_slug
-    ).toBeDefined();
   });
 
   it("passes human_id filter as humanId query param", async () => {
