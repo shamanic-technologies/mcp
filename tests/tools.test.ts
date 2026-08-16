@@ -9,7 +9,7 @@ vi.mock("../src/lib/api-client.js", () => ({
   isConfigured: vi.fn(() => true),
 }));
 
-import { handleToolCall } from "../src/tools/index.js";
+import { handleToolCall, toolDefinitions } from "../src/tools/index.js";
 import { callApi } from "../src/lib/api-client.js";
 
 const mockCallApi = vi.mocked(callApi);
@@ -19,25 +19,27 @@ beforeEach(() => {
 });
 
 describe("distribute_list_workflows", () => {
+  // One workflow exactly as the deployed gateway serves it on GET /v1/workflows.
   const makeWorkflow = (overrides: Record<string, unknown> = {}) => ({
     id: "wf-1",
-    appId: "distribute",
-    orgId: "org-1",
-    name: "sales-email-cold-outreach-sienna",
+    workflowSlug: "sales-email-cold-outreach-sienna-v3",
+    workflowName: "Cold outreach (Sienna) v3",
     displayName: null,
-    description: "Cold email outreach workflow",
+    workflowDynastyName: "Cold outreach (Sienna)",
+    workflowDynastySlug: "sales-email-cold-outreach-sienna",
+    version: 3,
+    createdForBrandId: null,
     category: "sales",
     channel: "email",
     audienceType: "cold-outreach",
-    signatureName: "sienna",
-    humanId: null,
-    styleName: null,
-    brandId: null,
-    campaignId: null,
+    featureSlug: "sales-cold-email-outreach",
+    signature: "abc123",
+    workflowDynastySignatureName: "sienna",
+    status: "active",
     ...overrides,
   });
 
-  it("calls GET /v1/workflows and returns mapped workflows", async () => {
+  it("calls GET /v1/workflows and returns the fields the gateway actually serves", async () => {
     mockCallApi.mockResolvedValue({
       data: {
         workflows: [makeWorkflow()],
@@ -50,28 +52,34 @@ describe("distribute_list_workflows", () => {
     expect(result).toEqual({
       workflows: [
         {
-          name: "sales-email-cold-outreach-sienna",
-          displayName: "sales-email-cold-outreach-sienna",
-          description: "Cold email outreach workflow",
+          workflowSlug: "sales-email-cold-outreach-sienna-v3",
+          workflowDynastySlug: "sales-email-cold-outreach-sienna",
+          displayName: "Cold outreach (Sienna)",
+          version: 3,
           category: "sales",
           channel: "email",
           audienceType: "cold-outreach",
+          featureSlug: "sales-cold-email-outreach",
           signatureName: "sienna",
-          humanId: null,
-          styleName: null,
+          status: "active",
         },
       ],
     });
   });
 
-  it("passes category filter as query param", async () => {
-    mockCallApi.mockResolvedValue({
-      data: { workflows: [] },
-    });
+  it("hands back the slug a campaign has to name", async () => {
+    mockCallApi.mockResolvedValue({ data: { workflows: [makeWorkflow()] } });
 
-    await handleToolCall("distribute_list_workflows", { category: "sales" });
+    const result = (await handleToolCall("distribute_list_workflows", {})) as {
+      workflows: Array<Record<string, unknown>>;
+    };
 
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/workflows?category=sales");
+    // distribute_create_campaign takes workflow_dynasty_slug, so this is the
+    // one field that makes the two tools compose.
+    expect(result.workflows[0]!.workflowDynastySlug).toBe("sales-email-cold-outreach-sienna");
+    expect(
+      toolDefinitions.distribute_create_campaign.schema.shape.workflow_dynasty_slug
+    ).toBeDefined();
   });
 
   it("passes human_id filter as humanId query param", async () => {
@@ -84,27 +92,24 @@ describe("distribute_list_workflows", () => {
     expect(mockCallApi).toHaveBeenCalledWith("/v1/workflows?humanId=human-abc123");
   });
 
-  it("passes both category and human_id filters", async () => {
+  it("sends no category filter — the gateway serves none", async () => {
     mockCallApi.mockResolvedValue({
       data: { workflows: [] },
     });
 
-    await handleToolCall("distribute_list_workflows", { category: "sales", human_id: "human-abc123" });
+    await handleToolCall("distribute_list_workflows", { category: "sales" });
 
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/workflows?category=sales&humanId=human-abc123");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/workflows");
+    expect(toolDefinitions.distribute_list_workflows.schema.shape).not.toHaveProperty("category");
   });
 
-  it("surfaces humanId and styleName for styled workflows", async () => {
+  it("falls back from displayName to the dynasty name, then the workflow name", async () => {
     mockCallApi.mockResolvedValue({
       data: {
         workflows: [
-          makeWorkflow({
-            name: "sales-email-cold-outreach-hormozi-v1",
-            displayName: "Hormozi v1",
-            signatureName: "hormozi-v1",
-            humanId: "human-abc123",
-            styleName: "hormozi",
-          }),
+          makeWorkflow({ displayName: "Hormozi v1" }),
+          makeWorkflow({ displayName: null }),
+          makeWorkflow({ displayName: null, workflowDynastyName: null }),
         ],
       },
     });
@@ -113,36 +118,34 @@ describe("distribute_list_workflows", () => {
       workflows: Array<Record<string, unknown>>;
     };
 
-    expect(result.workflows[0]).toEqual({
-      name: "sales-email-cold-outreach-hormozi-v1",
-      displayName: "Hormozi v1",
-      description: "Cold email outreach workflow",
-      category: "sales",
-      channel: "email",
-      audienceType: "cold-outreach",
-      signatureName: "hormozi-v1",
-      humanId: "human-abc123",
-      styleName: "hormozi",
-    });
-  });
-
-  it("uses name as displayName fallback when displayName is null", async () => {
-    mockCallApi.mockResolvedValue({
-      data: {
-        workflows: [makeWorkflow({ displayName: null })],
-      },
-    });
-
-    const result = (await handleToolCall("distribute_list_workflows", {})) as {
-      workflows: Array<Record<string, unknown>>;
-    };
-
-    expect(result.workflows[0]!.displayName).toBe("sales-email-cold-outreach-sienna");
+    expect(result.workflows[0]!.displayName).toBe("Hormozi v1");
+    expect(result.workflows[1]!.displayName).toBe("Cold outreach (Sienna)");
+    expect(result.workflows[2]!.displayName).toBe("Cold outreach (Sienna) v3");
   });
 
   it("throws on API error", async () => {
     mockCallApi.mockResolvedValue({ error: "Unauthorized" });
 
     await expect(handleToolCall("distribute_list_workflows", {})).rejects.toThrow("Unauthorized");
+  });
+});
+
+describe("distribute_list_campaigns", () => {
+  it("defaults to every campaign", async () => {
+    mockCallApi.mockResolvedValue({ data: { campaigns: [] } });
+
+    await handleToolCall("distribute_list_campaigns", {});
+
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns?status=all");
+  });
+
+  it("offers the status vocabulary the gateway serves, and not a word it does not", () => {
+    const schema = toolDefinitions.distribute_list_campaigns.schema;
+
+    expect(schema.safeParse({ status: "active" }).success).toBe(true);
+    expect(schema.safeParse({ status: "stopped" }).success).toBe(true);
+    expect(schema.safeParse({ status: "all" }).success).toBe(true);
+    // A campaign is never `ongoing` to api-service, so asking for one matched nothing.
+    expect(schema.safeParse({ status: "ongoing" }).success).toBe(false);
   });
 });
