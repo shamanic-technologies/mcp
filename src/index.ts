@@ -7,6 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { toolDefinitions, handleToolCall } from "./tools/index.js";
 import { setApiKey } from "./lib/api-client.js";
+import { discoveryDocument, notFoundDocument, SERVER_NAME, SERVER_VERSION } from "./discovery.js";
 
 const PORT = process.env.PORT || 3000;
 
@@ -47,6 +48,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const openapiPath = join(__dirname, "..", "openapi.json");
 
+// Discovery document. An agent that knows only this hostname can read what this
+// server is, which transport it speaks, where its endpoint is, and how to
+// authenticate — with no human-readable prose in the loop. No MCP specification
+// defines a well-known URI for this; the path below is a de-facto convention.
+app.get("/.well-known/mcp.json", (req, res) => {
+  res.json(discoveryDocument(req));
+});
+
 app.get("/openapi.json", (_req, res) => {
   if (existsSync(openapiPath)) {
     const spec = JSON.parse(readFileSync(openapiPath, "utf-8"));
@@ -77,8 +86,8 @@ app.post("/mcp", async (req: Request, res: Response) => {
       
       // Create MCP server for this session
       const mcpServer = new McpServer({
-        name: "distribute",
-        version: "0.1.0",
+        name: SERVER_NAME,
+        version: SERVER_VERSION,
       });
 
       // Register tools - each tool will use the session's API key
@@ -198,9 +207,10 @@ app.delete("/mcp", async (req: Request, res: Response) => {
   res.status(200).json({ success: true });
 });
 
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ error: "Not found" });
+// 404 handler. Keeps the real 404 status and names where to go next, so a
+// caller that guessed a path can recover without reading documentation.
+app.use((req, res) => {
+  res.status(404).json(notFoundDocument(req));
 });
 
 // Listen on :: for Railway private networking (IPv4 & IPv6 support)

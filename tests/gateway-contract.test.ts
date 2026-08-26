@@ -140,8 +140,13 @@ describe("the displayed server name", () => {
     }
   });
 
+  // The name moved into `src/discovery.ts` so the MCP handshake and the discovery
+  // document read ONE constant and cannot introduce the server under two names.
+  // Follow the constant rather than the literal: asserting the literal in
+  // index.ts would fail on a change that made the name MORE single-sourced.
   it("introduces the server to a client as distribute", () => {
-    expect(read("src/index.ts")).toContain('name: "distribute"');
+    expect(read("src/discovery.ts")).toContain('export const SERVER_NAME = "distribute"');
+    expect(read("src/index.ts")).toContain("name: SERVER_NAME");
   });
 });
 
