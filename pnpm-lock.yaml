@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      '@distribute/content':
+      '@distribute.you/content':
         specifier: workspace:*
         version: link:shared/content
       '@modelcontextprotocol/sdk':

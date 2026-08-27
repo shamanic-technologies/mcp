@@ -1,5 +1,5 @@
 {
-  "name": "@distribute/mcp-service",
+  "name": "@distribute.you/mcp-service",
   "version": "0.1.0",
   "description": "MCP Server for Sales Cold Emails - From URL to Revenue",
   "private": true,
@@ -14,7 +14,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@distribute/content": "workspace:*",
+    "@distribute.you/content": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.25.0",
     "@sentry/node": "^8.0.0",
     "cors": "^2.8.5",
