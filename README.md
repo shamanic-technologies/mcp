@@ -1,6 +1,6 @@
-# distribute MCP
+# distribute.you MCP
 
-A remote [MCP](https://modelcontextprotocol.io) server for [distribute](https://distribute.you). Point any MCP client at it with your organization's API key and drive your account from there: list brands and workflows, create and stop campaigns, read stats, ask for an ICP suggestion.
+A remote [MCP](https://modelcontextprotocol.io) server for [distribute.you](https://distribute.you). Point any MCP client at it with your organization's API key and drive your account from there: list brands and workflows, create and stop campaigns, read stats, ask for an ICP suggestion.
 
 It is a **remote HTTP server**, not an npx package. Nothing is published to npm and nothing is installed locally — a client connects over Streamable HTTP and authenticates with a header.
 
@@ -11,7 +11,7 @@ Create a key at [dashboard.distribute.you](https://dashboard.distribute.you): op
 Claude Code:
 
 ```bash
-claude mcp add --transport http distribute https://mcp.distribute.you/mcp \
+claude mcp add --transport http distribute.you https://mcp.distribute.you/mcp \
   --header "Authorization: Bearer YOUR_API_KEY"
 ```
 
@@ -20,7 +20,7 @@ Claude Desktop, Cursor, and other clients that take a JSON config:
 ```json
 {
   "mcpServers": {
-    "distribute": {
+    "distribute.you": {
       "type": "http",
       "url": "https://mcp.distribute.you/mcp",
       "headers": {

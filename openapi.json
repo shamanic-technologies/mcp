@@ -1,8 +1,8 @@
 {
   "openapi": "3.0.0",
   "info": {
-    "title": "distribute MCP Service",
-    "description": "MCP (Model Context Protocol) server for distribute. Exposes campaign management tools via MCP protocol over HTTP.",
+    "title": "distribute.you MCP Service",
+    "description": "MCP (Model Context Protocol) server for distribute.you. Exposes campaign management tools via MCP protocol over HTTP.",
     "version": "0.1.0"
   },
   "servers": [
@@ -20,12 +20,12 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "distribute API key"
+        "description": "distribute.you API key"
       }
     },
     "schemas": {
       "distribute_status": {
-        "description": "Check the distribute connection status and configuration",
+        "description": "Check the distribute.you connection status and configuration",
         "inputSchema": {
           "$ref": "#/definitions/distribute_status",
           "definitions": {
@@ -272,7 +272,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Check the distribute connection status and configuration",
+        "summary": "Check the distribute.you connection status and configuration",
         "description": "MCP Tool: distribute_status. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_status\".",
         "requestBody": {
           "content": {

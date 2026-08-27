@@ -144,8 +144,8 @@ describe("the displayed server name", () => {
   // document read ONE constant and cannot introduce the server under two names.
   // Follow the constant rather than the literal: asserting the literal in
   // index.ts would fail on a change that made the name MORE single-sourced.
-  it("introduces the server to a client as distribute", () => {
-    expect(read("src/discovery.ts")).toContain('export const SERVER_NAME = "distribute"');
+  it("introduces the server to a client as distribute.you", () => {
+    expect(read("src/discovery.ts")).toContain('export const SERVER_NAME = "distribute.you"');
     expect(read("src/index.ts")).toContain("name: SERVER_NAME");
   });
 });

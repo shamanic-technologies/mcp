@@ -149,9 +149,9 @@ for (const [name, def] of Object.entries(toolDefinitions)) {
 const spec = {
   openapi: "3.0.0",
   info: {
-    title: "distribute MCP Service",
+    title: "distribute.you MCP Service",
     description:
-      "MCP (Model Context Protocol) server for distribute. Exposes campaign management tools via MCP protocol over HTTP.",
+      "MCP (Model Context Protocol) server for distribute.you. Exposes campaign management tools via MCP protocol over HTTP.",
     version: "0.1.0",
   },
   servers: [
@@ -165,7 +165,7 @@ const spec = {
       bearerAuth: {
         type: "http",
         scheme: "bearer",
-        description: "distribute API key",
+        description: "distribute.you API key",
       },
     },
     schemas: toolSchemas,
