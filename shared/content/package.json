@@ -1,7 +1,7 @@
 {
-  "name": "@distribute/content",
+  "name": "@distribute.you/content",
   "version": "0.1.0",
-  "description": "Single source of truth for distribute content (pricing, MCPs, URLs, features)",
+  "description": "Single source of truth for distribute.you content (pricing, MCPs, URLs, features)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -13,7 +13,6 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
-    "generate:readme": "tsx scripts/generate-readme.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
