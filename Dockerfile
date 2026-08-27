@@ -27,8 +27,18 @@ RUN pnpm --filter "./shared/*" build
 # Build mcp-service
 RUN pnpm build
 
-# Prepare production directory with only production dependencies
-RUN pnpm deploy --filter @distribute/mcp-service --prod /prod
+# Prepare production directory with only production dependencies.
+#
+# `pnpm deploy` exits 0 on a filter that matches nothing — it only prints
+# "No projects matched the filters" — so a stale filter used to leave /prod
+# uncreated and the build died two steps later on a confusing `cp` error about
+# a missing directory. That happened when the workspace package was renamed to
+# @distribute.you/mcp-service and this line still said @distribute/mcp-service.
+# Assert the deploy actually produced /prod so the failure names its own cause.
+# tests/dockerfile.test.ts keeps this filter in sync with package.json "name".
+RUN pnpm deploy --filter @distribute.you/mcp-service --prod /prod \
+    && test -d /prod/node_modules \
+    || (echo "pnpm deploy produced no /prod - does the --filter above still match package.json name?" && exit 1)
 
 # Copy built files to production directory
 RUN cp -r /app/dist /prod/dist
