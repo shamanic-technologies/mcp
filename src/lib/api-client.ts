@@ -1,5 +1,5 @@
 /**
- * Client for the distribute API gateway.
+ * Client for the distribute.you API gateway.
  *
  * The key travels as `Authorization: Bearer <key>`, which is what api-service
  * validates a customer key with. It used to go out under the gateway's

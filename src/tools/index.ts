@@ -22,7 +22,7 @@ import { getConfigStatus, callApi } from "../lib/api-client.js";
 // Tool definitions with Zod schemas
 export const toolDefinitions = {
   distribute_status: {
-    description: "Check the distribute connection status and configuration",
+    description: "Check the distribute.you connection status and configuration",
     schema: z.object({}),
   },
   distribute_list_workflows: {
@@ -91,7 +91,7 @@ async function handleStatus() {
   if (!status.configured) {
     return {
       status: "not_configured",
-      message: "No distribute API key on this session",
+      message: "No distribute.you API key on this session",
       instructions: [
         "1. Create a key at https://dashboard.distribute.you — open your organization, then API Key.",
         "2. Send it on every request as the header: Authorization: Bearer <your key>",

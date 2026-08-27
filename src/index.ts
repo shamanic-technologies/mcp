@@ -215,7 +215,7 @@ app.use((req, res) => {
 
 // Listen on :: for Railway private networking (IPv4 & IPv6 support)
 app.listen(Number(PORT), "::", () => {
-  console.log(`distribute MCP Server running on port ${PORT}`);
+  console.log(`distribute.you MCP Server running on port ${PORT}`);
   console.log(`MCP endpoint: http://localhost:${PORT}/mcp`);
 });
 

@@ -27,7 +27,7 @@ export interface McpDiscoveryDocument {
   tools: { name: string; description: string }[];
 }
 
-export const SERVER_NAME = "distribute";
+export const SERVER_NAME = "distribute.you";
 /** Single source for the version this server reports, so the MCP handshake and
  * the discovery document can never advertise two different versions. */
 export const SERVER_VERSION = "0.1.0";
@@ -67,7 +67,7 @@ export function discoveryDocument(req: Request): McpDiscoveryDocument {
     authentication: {
       type: "bearer",
       description:
-        "Send an API key created in the distribute dashboard as `Authorization: Bearer " +
+        "Send an API key created in the distribute.you dashboard as `Authorization: Bearer " +
         "<key>`. The key carries organisation and user identity; no other header is needed.",
     },
     documentation: DOCS_URL,
