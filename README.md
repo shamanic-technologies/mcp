@@ -48,7 +48,7 @@ There are **6 tools**. The list below is the whole surface; the `/.well-known` d
 | `distribute_list_campaigns` | Every campaign, filterable by status |
 | `distribute_campaign_stats` | One campaign's results, success first |
 
-**How stats read.** `distribute_campaign_stats` leads with a one-line `headline` and a `summary`: meetings booked, positive replies, money earned and ROI (null for now: the API does not serve them, and `summary.notServed` says so), delivery rate, then volume and cost. The gateway's own figures follow unchanged, and bounces, unsubscribes and negative replies close the response in `failureDetails`. Zeros are shown as zeros. An assistant reading the response should report it in that order.
+**How stats read.** `distribute_campaign_stats` leads with a one-line `headline` and a `summary`: meetings booked, positive replies, money earned and ROI (null for now: the API does not serve them, and `summary.notServed` says so), delivery rate (the ratio the API serves, shown as a percent; null when the API serves null), then volume and cost. The gateway's own figures follow unchanged, and bounces, unsubscribes and negative replies close the response in `failureDetails`. Zeros are shown as zeros. An assistant reading the response should report it in that order.
 
 **These tools read; they do not write.** A customer funds a sales funnel and picks
 audiences, and operating a campaign is something we do with them rather than

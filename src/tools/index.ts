@@ -246,12 +246,14 @@ async function handleCampaignStats(args: Record<string, unknown>) {
     throw new Error(result.error);
   }
 
-  const raw = withoutOpens(result.data) as Record<string, unknown>;
-  const summary = successFirstSummary(raw);
+  // The gateway serves its own success-first `headline` block; its figures are
+  // folded into `summary` so the one-line sentence keeps the `headline` key.
+  const { headline: served, ...raw } = withoutOpens(result.data) as Record<string, unknown>;
+  const summary = successFirstSummary(raw, (served ?? {}) as Record<string, unknown>);
 
   // Key order IS the reading order: an assistant summarizing this JSON reports
-  // what it reads first. Every field the gateway served stays, untouched, in
-  // between; only its position relative to the summary changed.
+  // what it reads first. Every other field the gateway served stays, untouched,
+  // in between; only its position relative to the summary changed.
   return {
     headline: headlineOf(summary),
     summary,
@@ -272,6 +274,7 @@ type Summary = {
   emailsSent: number | null;
   costUsd: number | null;
   notServed: string[];
+  unavailable: string[];
 };
 
 const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
@@ -279,30 +282,30 @@ const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
 /**
  * The owner's reading order: meetings and positive replies, money earned / ROI,
  * delivery rate, then volume and cost. Every figure is read from the gateway's
- * response; the delivery rate is the two counts it serves divided, nothing more.
- * Money earned and ROI are not served by the API, so they are null and listed in
+ * response. The delivery rate is the 0..1 ratio the API serves in its headline
+ * (email-gateway's own figure), shown as a percent; null stays null. Money
+ * earned and ROI are not served by the API, so they are null and listed in
  * `notServed` instead of guessed.
  */
-function successFirstSummary(raw: Record<string, unknown>): Summary {
+function successFirstSummary(raw: Record<string, unknown>, served: Record<string, unknown>): Summary {
   const recipients = (raw.recipientStats ?? {}) as Record<string, unknown>;
   const detail = (recipients.repliesDetail ?? {}) as Record<string, unknown>;
   const emails = (raw.emailStats ?? {}) as Record<string, unknown>;
-  const sent = num(recipients.sent);
-  const delivered = num(recipients.delivered);
+  const deliveryRate = num(served.deliveryRate);
 
   return {
     meetingsBooked: num(detail.meetingBooked),
     positiveReplies: num(recipients.repliesPositive),
     moneyEarnedUsd: null,
     roi: null,
-    deliveryRatePct:
-      sent && delivered !== null ? Math.round((delivered / sent) * 1000) / 10 : null,
-    delivered,
-    sent,
+    deliveryRatePct: deliveryRate === null ? null : Math.round(deliveryRate * 1000) / 10,
+    delivered: num(served.delivered),
+    sent: num(served.sent),
     leadsContacted: num(raw.leadsContacted),
     emailsSent: num(emails.sent),
     costUsd: num(raw.totalCostUsd),
     notServed: ["moneyEarnedUsd", "roi"],
+    unavailable: Array.isArray(served.unavailable) ? (served.unavailable as string[]) : [],
   };
 }
 
@@ -313,7 +316,7 @@ function headlineOf(s: Summary): string {
       ? `${s.deliveryRatePct}% delivered (${s.delivered} of ${s.sent})`
       : s.sent === 0
         ? "no delivery rate yet (nothing sent)"
-        : "delivery rate unknown (not served)";
+        : "delivery rate unknown";
   const cost = s.costUsd === null ? "" : `, $${s.costUsd.toFixed(2)} spent`;
   return (
     `${count(s.meetingsBooked)} meetings booked, ${count(s.positiveReplies)} positive replies, ${delivery}. ` +
