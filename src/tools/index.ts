@@ -1,5 +1,51 @@
 import { z } from "zod";
-import { getConfigStatus, callApi } from "../lib/api-client.js";
+import { getConfigStatus, callApi, type ApiErrorBody } from "../lib/api-client.js";
+
+/**
+ * A distribute.you key belongs to its USER, across every organization that user
+ * is a member of (staff count as members of all). Each request acts in ONE
+ * organization, named by a brand (`brandId`) or by the organization (`orgId`).
+ * A user in a single organization names nothing; a user in several who names nothing
+ * gets `400 org_target_required` from the gateway, with the list to choose from.
+ * This server never picks one for them: it forwards what the caller named and
+ * hands back the gateway's refusal whole.
+ */
+const TARGET_HINT =
+  "Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). " +
+  "A user in a single organization can omit both.";
+
+const targetShape = {
+  brandId: z
+    .string()
+    .optional()
+    .describe("Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."),
+  orgId: z
+    .string()
+    .optional()
+    .describe("Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."),
+};
+
+/** Append the caller's brand/org target to a gateway path, exactly as named. */
+function withTarget(path: string, args: Record<string, unknown>): string {
+  const params = new URLSearchParams();
+  if (typeof args.brandId === "string" && args.brandId) params.set("brandId", args.brandId);
+  if (typeof args.orgId === "string" && args.orgId) params.set("orgId", args.orgId);
+  const qs = params.toString();
+  if (!qs) return path;
+  return `${path}${path.includes("?") ? "&" : "?"}${qs}`;
+}
+
+/**
+ * Throw the gateway's refusal as-is. A body carrying a `code` (org_target_required,
+ * brand_in_several_orgs, org_not_member, ...) is serialized whole, so the client
+ * reads `code`, `message`, `fix` and `organizations` rather than a bare word.
+ */
+function failWith(result: { error?: string; errorBody?: ApiErrorBody }): never {
+  if (result.errorBody && typeof result.errorBody.code === "string") {
+    throw new Error(JSON.stringify(result.errorBody));
+  }
+  throw new Error(result.error ?? "Request failed");
+}
 
 /**
  * The tools mirror what the CUSTOMER dashboard lets a person do, and nothing more.
@@ -23,20 +69,25 @@ import { getConfigStatus, callApi } from "../lib/api-client.js";
 export const toolDefinitions = {
   distribute_status: {
     description:
-      "Check the connection and say who the key belongs to: the organization's name, its brands, and the user. " +
-      "A key belongs to ONE user in ONE organization (the one active when the key was created), never to a brand, and carries no staff or beta powers. " +
+      "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. " +
+      "A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand and never carries staff or beta powers. " +
+      "Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. " +
       "Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
     schema: z.object({}),
   },
   distribute_list_workflows: {
-    description: "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi).",
+    description:
+      "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi). " +
+      TARGET_HINT,
     schema: z.object({
       human_id: z.string().optional().describe("Filter by human expert ID (for styled workflows)"),
+      ...targetShape,
     }),
   },
   distribute_list_campaigns: {
-    description: "List all your cold email campaigns",
+    description: "List the cold email campaigns of one brand or organization. " + TARGET_HINT,
     schema: z.object({
+      ...targetShape,
       status: z.enum(["ongoing", "stopped", "all"]).optional().describe("Filter by campaign status. `ongoing` is the vocabulary the platform stores — an unrecognised value is not refused, it is ignored, and the whole list comes back."),
     }),
   },
@@ -44,20 +95,28 @@ export const toolDefinitions = {
     description:
       "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; " +
       "bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. " +
-      "Show zeros plainly (0 meetings is still reported).",
+      "Show zeros plainly (0 meetings is still reported). " +
+      TARGET_HINT,
     schema: z.object({
       campaign_id: z.string().describe("Campaign ID to get stats for"),
+      ...targetShape,
     }),
   },
   distribute_list_brands: {
-    description: "List all your brands (companies/websites you promote through campaigns)",
-    schema: z.object({}),
+    description:
+      "List the brands (companies/websites you promote through campaigns) of the targeted organization. " +
+      "distribute_status already lists every organization with its brands; use this for the full brand records of the organization you target. " +
+      TARGET_HINT,
+    schema: z.object({ ...targetShape }),
   },
   distribute_suggest_icp: {
     description:
-      "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of the ideal customers to aim a campaign at.",
+      "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of the ideal customers to aim a campaign at. " +
+      "Name the brand by brandId, or by brand_url (matched against the brands of the targeted organization). " +
+      TARGET_HINT,
     schema: z.object({
-      brand_url: z.string().describe("The brand/company URL to analyze for ICP extraction"),
+      brand_url: z.string().optional().describe("The brand/company URL to analyze for ICP extraction. Optional when brandId is given."),
+      ...targetShape,
     }),
   },
 };
@@ -80,7 +139,7 @@ export async function handleToolCall(
       return handleCampaignStats(args);
 
     case "distribute_list_brands":
-      return handleListBrands();
+      return handleListBrands(args);
 
     case "distribute_suggest_icp":
       return handleSuggestIcp(args);
@@ -123,47 +182,36 @@ async function handleStatus() {
     };
   }
 
+  // `/v1/me` answers with nothing named, for a key in any number of
+  // organizations: it is how a multi-org caller learns its choices. Read only
+  // what it serves; `/v1/brands` is not called here because, for a multi-org
+  // key with no target, it is a 400.
   const me = result.data as Record<string, unknown>;
-  const brands = await callApi<{ brands: Array<Record<string, unknown>> }>("/v1/brands");
-  if (brands.error) throw new Error(brands.error);
+  const organizations = Array.isArray(me.organizations)
+    ? (me.organizations as Array<Record<string, unknown>>).map((o) => ({
+        id: o.id ?? null,
+        name: o.name ?? null,
+        brands: Array.isArray(o.brands)
+          ? (o.brands as Array<Record<string, unknown>>).map((b) => ({
+              id: b.id ?? null,
+              name: b.name ?? null,
+              domain: b.domain ?? null,
+            }))
+          : [],
+      }))
+    : null;
 
   return {
     status: "connected",
-    organization: {
-      id: me.orgId ?? null,
-      name: organizationNameOf(me),
-    },
-    brands: (brands.data as { brands: Array<Record<string, unknown>> }).brands.map((b) => ({
-      id: b.id ?? null,
-      name: b.name ?? null,
-      domain: b.domain ?? null,
-    })),
-    keyScope: KEY_SCOPE,
+    summary: me.summary ?? null,
+    user: me.user ?? null,
+    organizations,
+    organization: me.organization ?? null,
+    keyScope: me.keyScope ?? null,
+    howToTarget: TARGET_HINT,
+    lookupErrors: Array.isArray(me.lookupErrors) && me.lookupErrors.length > 0 ? me.lookupErrors : undefined,
     apiUrl: status.apiUrl,
-    user: me,
   };
-}
-
-/**
- * What a key IS, stated where an assistant reads it. Without it, one told a
- * user their key "belongs to a user account, not a brand" and could not explain
- * why it read a client organization: the key belongs to whichever organization
- * was active when it was created.
- */
-const KEY_SCOPE =
-  "This key belongs to one user in one organization: the organization that was active when the key was created. " +
-  "It reads that organization and all of its brands, nothing else. It never belongs to a single brand, " +
-  "and it never carries staff or beta powers. To read another organization, create a key while that organization is active.";
-
-/**
- * `/v1/me` serves `userId`, `orgId` and `authType` today; api-service is adding
- * the organization's name. Read it under the spellings it may land as, and say
- * plainly when it is not served yet rather than invent one.
- */
-function organizationNameOf(me: Record<string, unknown>): string | null {
-  const org = me.organization as Record<string, unknown> | undefined;
-  const name = me.orgName ?? me.organizationName ?? org?.name;
-  return typeof name === "string" && name ? name : null;
 }
 
 async function handleListWorkflows(args: Record<string, unknown>) {
@@ -174,12 +222,10 @@ async function handleListWorkflows(args: Record<string, unknown>) {
   if (args.human_id) params.set("humanId", args.human_id as string);
 
   const queryString = params.toString();
-  const path = `/v1/workflows${queryString ? `?${queryString}` : ""}`;
+  const path = withTarget(`/v1/workflows${queryString ? `?${queryString}` : ""}`, args);
   const result = await callApi<{ workflows: Array<Record<string, unknown>> }>(path);
 
-  if (result.error) {
-    throw new Error(result.error);
-  }
+  if (result.error) failWith(result);
 
   const workflows = (result.data as { workflows: Array<Record<string, unknown>> }).workflows;
 
@@ -207,12 +253,10 @@ async function handleListWorkflows(args: Record<string, unknown>) {
 async function handleListCampaigns(args: Record<string, unknown>) {
   const status = args.status || "all";
   const result = await callApi<{ campaigns: Array<Record<string, unknown>> }>(
-    `/v1/campaigns?status=${status}`,
+    withTarget(`/v1/campaigns?status=${status}`, args),
   );
 
-  if (result.error) {
-    throw new Error(result.error);
-  }
+  if (result.error) failWith(result);
 
   const campaigns = (result.data as { campaigns: Array<Record<string, unknown>> }).campaigns;
 
@@ -239,12 +283,10 @@ async function handleListCampaigns(args: Record<string, unknown>) {
 
 async function handleCampaignStats(args: Record<string, unknown>) {
   const result = await callApi<Record<string, unknown>>(
-    `/v1/campaigns/${args.campaign_id}/stats`,
+    withTarget(`/v1/campaigns/${args.campaign_id}/stats`, args),
   );
 
-  if (result.error) {
-    throw new Error(result.error);
-  }
+  if (result.error) failWith(result);
 
   // The gateway serves its own success-first `headline` block; its figures are
   // folded into `summary` so the one-line sentence keeps the `headline` key.
@@ -361,12 +403,10 @@ function withoutOpens(value: unknown): unknown {
   return value;
 }
 
-async function handleListBrands() {
-  const result = await callApi("/v1/brands");
+async function handleListBrands(args: Record<string, unknown>) {
+  const result = await callApi(withTarget("/v1/brands", args));
 
-  if (result.error) {
-    throw new Error(result.error);
-  }
+  if (result.error) failWith(result);
 
   return result.data;
 }
@@ -380,27 +420,35 @@ async function handleSuggestIcp(args: Record<string, unknown>) {
   // That route takes a brand id rather than a URL, so the brand is resolved here: the
   // caller names a site, which is what a person knows, and an id they would have to look
   // up first is a worse tool.
-  const brandUrl = String(args.brand_url ?? "");
-  const wanted = hostnameOf(brandUrl);
-  if (!wanted) throw new Error(`Not a URL: ${brandUrl}`);
+  //
+  // A named brandId needs no lookup: `/v1/brands/{id}` selects its organization.
+  let brandId = typeof args.brandId === "string" && args.brandId ? args.brandId : null;
 
-  const brands = await callApi<{ brands: Array<{ id: string; domain?: string | null }> }>("/v1/brands");
-  if (brands.error) throw new Error(brands.error);
+  if (!brandId) {
+    const brandUrl = String(args.brand_url ?? "");
+    const wanted = hostnameOf(brandUrl);
+    if (!wanted) throw new Error(`Name the brand: pass brandId, or brand_url as a URL (got: ${brandUrl || "nothing"}). ${TARGET_HINT}`);
 
-  const match = (brands.data as { brands: Array<{ id: string; domain?: string | null }> }).brands
-    .find((b) => b.domain && hostnameOf(`https://${b.domain}`) === wanted);
+    const brands = await callApi<{ brands: Array<{ id: string; domain?: string | null }> }>(withTarget("/v1/brands", args));
+    if (brands.error) failWith(brands);
 
-  if (!match) {
-    throw new Error(
-      `No brand on this organization matches ${wanted}. Use distribute_list_brands to see what is available.`,
-    );
+    const match = (brands.data as { brands: Array<{ id: string; domain?: string | null }> }).brands
+      .find((b) => b.domain && hostnameOf(`https://${b.domain}`) === wanted);
+
+    if (!match) {
+      throw new Error(
+        `No brand in the targeted organization matches ${wanted}. Call distribute_status to see every organization's brands, then pass brandId.`,
+      );
+    }
+    brandId = match.id;
   }
 
-  const result = await callApi(`/v1/brands/${match.id}/icp/suggest`, { method: "POST", body: {} });
+  const result = await callApi(
+    withTarget(`/v1/brands/${brandId}/icp/suggest`, { orgId: args.orgId }),
+    { method: "POST", body: {} },
+  );
 
-  if (result.error) {
-    throw new Error(result.error);
-  }
+  if (result.error) failWith(result);
 
   return result.data;
 }

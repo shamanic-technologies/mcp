@@ -304,35 +304,45 @@ describe("distribute_campaign_stats reads success first", () => {
 });
 
 describe("distribute_status says whose key this is", () => {
-  it("names the organization, its brands, and the key's one-organization scope", async () => {
-    mockCallApi.mockImplementation(async (path: string) =>
-      path === "/v1/me"
-        ? { data: { userId: "u1", orgId: "o1", authType: "user_key", orgName: "distribute.you" } }
-        : { data: { brands: [{ id: "b1", name: "Acme", domain: "acme.com", offer: "long" }] } },
-    );
+  // The shape the deployed gateway serves on GET /v1/me for a user key that
+  // reaches two organizations and names neither.
+  const me = {
+    summary: "Acting as Ada (ada@acme.com). This key reaches 2 organizations: ...",
+    user: { id: "u1", email: "ada@acme.com", firstName: "Ada", lastName: null },
+    organizations: [
+      { id: "o1", name: "Acme", brands: [{ id: "b1", name: "Acme", domain: "acme.com" }] },
+      { id: "o2", name: "Globex", brands: [{ id: "b2", name: "Globex", domain: "globex.com" }, { id: "b3", name: "Initech", domain: "initech.com" }] },
+    ],
+    organization: null,
+    brands: null,
+    keyScope: "A distribute.you API key belongs to its USER and acts in every organization that user is a member of ...",
+    lookupErrors: [],
+    userId: "u1",
+    orgId: null,
+    authType: "user_key",
+  };
+
+  it("lists every organization the key reaches, each with its brands, from /v1/me alone", async () => {
+    mockCallApi.mockResolvedValue({ data: me });
 
     const out = (await handleToolCall("distribute_status", {})) as Record<string, any>;
 
+    expect(mockCallApi).toHaveBeenCalledTimes(1);
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/me");
     expect(out.status).toBe("connected");
-    expect(out.organization).toEqual({ id: "o1", name: "distribute.you" });
-    expect(out.brands).toEqual([{ id: "b1", name: "Acme", domain: "acme.com" }]);
-    expect(out.keyScope).toContain("one user in one organization");
-    expect(out.keyScope).toContain("never belongs to a single brand");
-    expect(out.keyScope).toContain("staff or beta");
-    // Unchanged for live callers.
-    expect(out.user).toEqual({ userId: "u1", orgId: "o1", authType: "user_key", orgName: "distribute.you" });
+    expect(out.organizations).toEqual(me.organizations);
+    expect(out.organization).toBeNull();
+    expect(out.user).toEqual(me.user);
+    expect(out.summary).toBe(me.summary);
   });
 
-  it("reports the organization name as null while the API does not serve it", async () => {
-    mockCallApi.mockImplementation(async (path: string) =>
-      path === "/v1/me"
-        ? { data: { userId: "u1", orgId: "o1", authType: "user_key" } }
-        : { data: { brands: [] } },
-    );
+  it("reports the key scope the gateway serves, and how to target a request", async () => {
+    mockCallApi.mockResolvedValue({ data: me });
 
     const out = (await handleToolCall("distribute_status", {})) as Record<string, any>;
 
-    expect(out.organization).toEqual({ id: "o1", name: null });
+    expect(out.keyScope).toBe(me.keyScope);
+    expect(out.howToTarget).toContain("pass brandId (and orgId if a brand sits in several orgs)");
   });
 
   it("explains a refused key instead of a bare error", async () => {
@@ -345,4 +355,90 @@ describe("distribute_status says whose key this is", () => {
     expect(out.hint).toContain("revoked, deleted or mistyped");
     expect(out.hint).toContain("Authorization: Bearer");
   });
+});
+
+describe("every brand/campaign read passes the caller's target through", () => {
+  const cases: Array<[string, Record<string, unknown>, string, unknown]> = [
+    ["distribute_list_brands", {}, "/v1/brands", { brands: [] }],
+    ["distribute_list_campaigns", { status: "ongoing" }, "/v1/campaigns?status=ongoing", { campaigns: [] }],
+    ["distribute_campaign_stats", { campaign_id: "c1" }, "/v1/campaigns/c1/stats", {}],
+    ["distribute_list_workflows", {}, "/v1/workflows", { workflows: [] }],
+  ];
+
+  for (const [tool, args, path, data] of cases) {
+    it(`${tool} forwards brandId and orgId as query parameters`, async () => {
+      mockCallApi.mockResolvedValue({ data });
+      await handleToolCall(tool, { ...args, brandId: "b2", orgId: "o2" });
+      const sep = path.includes("?") ? "&" : "?";
+      expect(mockCallApi).toHaveBeenCalledWith(`${path}${sep}brandId=b2&orgId=o2`);
+    });
+
+    it(`${tool} names nothing when the caller named nothing (no default org)`, async () => {
+      mockCallApi.mockResolvedValue({ data });
+      await handleToolCall(tool, args);
+      expect(mockCallApi).toHaveBeenCalledWith(path);
+    });
+
+    it(`${tool} accepts an optional brandId and orgId`, () => {
+      const shape = (toolDefinitions as Record<string, { schema: { shape: Record<string, unknown> } }>)[tool]!.schema.shape;
+      expect(shape).toHaveProperty("brandId");
+      expect(shape).toHaveProperty("orgId");
+    });
+  }
+
+  it("suggest_icp with a brandId posts to that brand directly, no lookup", async () => {
+    mockCallApi.mockResolvedValue({ data: { icp: "x" } });
+    await handleToolCall("distribute_suggest_icp", { brandId: "b2", orgId: "o2" });
+    expect(mockCallApi).toHaveBeenCalledTimes(1);
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/brands/b2/icp/suggest?orgId=o2", { method: "POST", body: {} });
+  });
+
+  it("suggest_icp by URL looks the brand up inside the targeted organization", async () => {
+    mockCallApi.mockImplementation(async (path: string) =>
+      path.startsWith("/v1/brands?")
+        ? { data: { brands: [{ id: "b3", domain: "initech.com" }] } }
+        : { data: { icp: "x" } },
+    );
+    await handleToolCall("distribute_suggest_icp", { brand_url: "https://www.initech.com/", orgId: "o2" });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/brands?orgId=o2");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/brands/b3/icp/suggest?orgId=o2", { method: "POST", body: {} });
+  });
+
+  it("every targeting tool tells the model to call distribute_status first", () => {
+    for (const tool of ["distribute_list_brands", "distribute_list_campaigns", "distribute_campaign_stats", "distribute_list_workflows", "distribute_suggest_icp"]) {
+      expect((toolDefinitions as Record<string, { description: string }>)[tool]!.description).toContain(
+        "Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs).",
+      );
+    }
+  });
+});
+
+describe("a multi-org call with no target surfaces the gateway's refusal as-is", () => {
+  const refusal = {
+    error: "Organization required",
+    code: "org_target_required",
+    message: "You belong to 2 organizations and this request named none.",
+    fix: "Name a brand with ?brandId=<id> ... or the organization with ?orgId=<id>.",
+    organizations: [{ id: "o1", name: "Acme" }, { id: "o2", name: "Globex" }],
+  };
+
+  for (const [tool, args] of [
+    ["distribute_list_brands", {}],
+    ["distribute_list_campaigns", {}],
+    ["distribute_campaign_stats", { campaign_id: "c1" }],
+    ["distribute_list_workflows", {}],
+    ["distribute_suggest_icp", { brand_url: "acme.com" }],
+  ] as Array<[string, Record<string, unknown>]>) {
+    it(`${tool} throws code, message, fix and organizations, never a default`, async () => {
+      mockCallApi.mockResolvedValue({ error: refusal.error, errorBody: refusal, status: 400 });
+
+      const err = await handleToolCall(tool, args).then(
+        () => null,
+        (e: Error) => e,
+      );
+      expect(err).not.toBeNull();
+      expect(JSON.parse(err!.message)).toEqual(refusal);
+      expect(mockCallApi).toHaveBeenCalledTimes(1);
+    });
+  }
 });

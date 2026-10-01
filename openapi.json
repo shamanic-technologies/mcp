@@ -25,7 +25,7 @@
     },
     "schemas": {
       "distribute_status": {
-        "description": "Check the connection and say who the key belongs to: the organization's name, its brands, and the user. A key belongs to ONE user in ONE organization (the one active when the key was created), never to a brand, and carries no staff or beta powers. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+        "description": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand and never carries staff or beta powers. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_status",
           "definitions": {
@@ -39,7 +39,7 @@
         }
       },
       "distribute_list_workflows": {
-        "description": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi).",
+        "description": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_workflows",
           "definitions": {
@@ -49,6 +49,14 @@
                 "human_id": {
                   "type": "string",
                   "description": "Filter by human expert ID (for styled workflows)"
+                },
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                 }
               },
               "additionalProperties": false
@@ -58,13 +66,21 @@
         }
       },
       "distribute_list_campaigns": {
-        "description": "List all your cold email campaigns",
+        "description": "List the cold email campaigns of one brand or organization. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_campaigns",
           "definitions": {
             "distribute_list_campaigns": {
               "type": "object",
               "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                },
                 "status": {
                   "type": "string",
                   "enum": [
@@ -82,7 +98,7 @@
         }
       },
       "distribute_campaign_stats": {
-        "description": "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported).",
+        "description": "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_campaign_stats",
           "definitions": {
@@ -92,6 +108,14 @@
                 "campaign_id": {
                   "type": "string",
                   "description": "Campaign ID to get stats for"
+                },
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                 }
               },
               "required": [
@@ -104,13 +128,22 @@
         }
       },
       "distribute_list_brands": {
-        "description": "List all your brands (companies/websites you promote through campaigns)",
+        "description": "List the brands (companies/websites you promote through campaigns) of the targeted organization. distribute_status already lists every organization with its brands; use this for the full brand records of the organization you target. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_brands",
           "definitions": {
             "distribute_list_brands": {
               "type": "object",
-              "properties": {},
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                }
+              },
               "additionalProperties": false
             }
           },
@@ -118,7 +151,7 @@
         }
       },
       "distribute_suggest_icp": {
-        "description": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of the ideal customers to aim a campaign at.",
+        "description": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of the ideal customers to aim a campaign at. Name the brand by brandId, or by brand_url (matched against the brands of the targeted organization). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_suggest_icp",
           "definitions": {
@@ -127,12 +160,17 @@
               "properties": {
                 "brand_url": {
                   "type": "string",
-                  "description": "The brand/company URL to analyze for ICP extraction"
+                  "description": "The brand/company URL to analyze for ICP extraction. Optional when brandId is given."
+                },
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                 }
               },
-              "required": [
-                "brand_url"
-              ],
               "additionalProperties": false
             }
           },
@@ -272,7 +310,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Check the connection and say who the key belongs to: the organization's name, its brands, and the user. A key belongs to ONE user in ONE organization (the one active when the key was created), never to a brand, and carries no staff or beta powers. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+        "summary": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand and never carries staff or beta powers. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
         "description": "MCP Tool: distribute_status. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_status\".",
         "requestBody": {
           "content": {
@@ -321,7 +359,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi).",
+        "summary": "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_list_workflows. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_workflows\".",
         "requestBody": {
           "content": {
@@ -332,6 +370,14 @@
                   "human_id": {
                     "type": "string",
                     "description": "Filter by human expert ID (for styled workflows)"
+                  },
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                   }
                 },
                 "additionalProperties": false
@@ -375,7 +421,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List all your cold email campaigns",
+        "summary": "List the cold email campaigns of one brand or organization. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_list_campaigns. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_campaigns\".",
         "requestBody": {
           "content": {
@@ -383,6 +429,14 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  },
                   "status": {
                     "type": "string",
                     "enum": [
@@ -434,7 +488,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported).",
+        "summary": "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_campaign_stats. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_campaign_stats\".",
         "requestBody": {
           "content": {
@@ -445,6 +499,14 @@
                   "campaign_id": {
                     "type": "string",
                     "description": "Campaign ID to get stats for"
+                  },
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                   }
                 },
                 "required": [
@@ -491,14 +553,23 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List all your brands (companies/websites you promote through campaigns)",
+        "summary": "List the brands (companies/websites you promote through campaigns) of the targeted organization. distribute_status already lists every organization with its brands; use this for the full brand records of the organization you target. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_list_brands. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_brands\".",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  }
+                },
                 "additionalProperties": false
               }
             }
@@ -540,7 +611,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of the ideal customers to aim a campaign at.",
+        "summary": "Analyze a brand's website and suggest an Ideal Customer Profile (ICP). Use this when the user doesn't know who to target and wants AI-generated targeting suggestions. Returns a description of the ideal customers to aim a campaign at. Name the brand by brandId, or by brand_url (matched against the brands of the targeted organization). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_suggest_icp. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_suggest_icp\".",
         "requestBody": {
           "content": {
@@ -550,12 +621,17 @@
                 "properties": {
                   "brand_url": {
                     "type": "string",
-                    "description": "The brand/company URL to analyze for ICP extraction"
+                    "description": "The brand/company URL to analyze for ICP extraction. Optional when brandId is given."
+                  },
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                   }
                 },
-                "required": [
-                  "brand_url"
-                ],
                 "additionalProperties": false
               }
             }

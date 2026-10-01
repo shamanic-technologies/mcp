@@ -237,7 +237,7 @@ describe("suggest_icp calls the route that exists", () => {
 
   it("resolves the brand and posts to its own icp route", () => {
     expect(src).toContain("/icp/suggest");
-    expect(src).toContain('callApi<{ brands: Array<{ id: string; domain?: string | null }> }>("/v1/brands")');
+    expect(src).toContain('callApi<{ brands: Array<{ id: string; domain?: string | null }> }>(withTarget("/v1/brands", args))');
   });
 });
 
