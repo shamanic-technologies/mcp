@@ -155,6 +155,20 @@ describe("distribute_campaign_stats reads success first", () => {
   // the numbers a real assistant once reported failures-first: "531 sent, 518
   // delivered, 13 bounces" instead of "98% delivered".
   const stats = (overrides: Record<string, unknown> = {}) => ({
+    // The gateway's own success-first block; deliveryRate is email-gateway's
+    // served 0..1 ratio, copied through by api-service.
+    headline: {
+      meetingsBooked: 1,
+      positiveReplies: 3,
+      moneyEarnedInUsdCents: null,
+      roi: null,
+      deliveryRate: 0.9755,
+      delivered: 518,
+      sent: 531,
+      costInUsdCents: "1230",
+      notServed: ["moneyEarnedInUsdCents", "roi"],
+      unavailable: [] as string[],
+    },
     campaignId: "c1",
     leadsServed: 600,
     leadsContacted: 531,
@@ -211,6 +225,8 @@ describe("distribute_campaign_stats reads success first", () => {
       "deliveryRatePct",
     ]);
     expect(summary.deliveryRatePct).toBe(97.6);
+    expect(summary.delivered).toBe(518);
+    expect(summary.sent).toBe(531);
     expect(out.failureDetails).toEqual({
       recipientsBounced: 13,
       emailsBounced: 20,
@@ -246,15 +262,38 @@ describe("distribute_campaign_stats reads success first", () => {
     expect(out.summary.notServed).toEqual(["moneyEarnedUsd", "roi"]);
   });
 
+  it("shows the served delivery rate, not one computed from the counts", async () => {
+    // Counts that would divide to 97.6%: the served ratio wins.
+    const served = stats();
+    served.headline = { ...served.headline, deliveryRate: 0.5 };
+    mockCallApi.mockResolvedValue({ data: served });
+
+    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
+
+    expect(out.summary.deliveryRatePct).toBe(50);
+    expect(out.headline).toContain("50% delivered (518 of 531)");
+  });
+
   it("gives no delivery rate before anything is sent, and says why", async () => {
     const empty = stats();
-    empty.recipientStats = { ...empty.recipientStats, sent: 0, delivered: 0 };
+    empty.headline = { ...empty.headline, deliveryRate: null, delivered: 0, sent: 0 };
     mockCallApi.mockResolvedValue({ data: empty });
 
     const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
 
     expect(out.summary.deliveryRatePct).toBeNull();
     expect(out.headline).toContain("no delivery rate yet (nothing sent)");
+  });
+
+  it("keeps a null served rate null when something was sent", async () => {
+    const contradicted = stats();
+    contradicted.headline = { ...contradicted.headline, deliveryRate: null };
+    mockCallApi.mockResolvedValue({ data: contradicted });
+
+    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
+
+    expect(out.summary.deliveryRatePct).toBeNull();
+    expect(out.headline).toContain("delivery rate unknown");
   });
 
   it("tells the model to report success first", () => {
