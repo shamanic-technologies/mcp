@@ -25,7 +25,7 @@
     },
     "schemas": {
       "distribute_status": {
-        "description": "Check the distribute.you connection status and configuration",
+        "description": "Check the connection and say who the key belongs to: the organization's name, its brands, and the user. A key belongs to ONE user in ONE organization (the one active when the key was created), never to a brand, and carries no staff or beta powers. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_status",
           "definitions": {
@@ -82,7 +82,7 @@
         }
       },
       "distribute_campaign_stats": {
-        "description": "Get statistics for a specific campaign",
+        "description": "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported).",
         "inputSchema": {
           "$ref": "#/definitions/distribute_campaign_stats",
           "definitions": {
@@ -272,7 +272,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Check the distribute.you connection status and configuration",
+        "summary": "Check the connection and say who the key belongs to: the organization's name, its brands, and the user. A key belongs to ONE user in ONE organization (the one active when the key was created), never to a brand, and carries no staff or beta powers. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
         "description": "MCP Tool: distribute_status. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_status\".",
         "requestBody": {
           "content": {
@@ -434,7 +434,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Get statistics for a specific campaign",
+        "summary": "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported).",
         "description": "MCP Tool: distribute_campaign_stats. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_campaign_stats\".",
         "requestBody": {
           "content": {

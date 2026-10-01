@@ -31,9 +31,13 @@ Claude Desktop, Cursor, and other clients that take a JSON config:
 }
 ```
 
-Call `distribute_status` first — it confirms the key reached the gateway, and says what to fix if it did not.
+Call `distribute_status` first — it confirms the key reached the gateway, names the organization and its brands, and says what to fix if the key was refused. The API cannot tell a revoked key from a mistyped one; both come back as a refusal.
+
+**What a key covers.** A key belongs to one user in one organization: the organization that was active in the dashboard when the key was created. It reads that organization and all of its brands, nothing else. It never belongs to a single brand and never carries staff or beta powers. To read another organization, create a key while that organization is active.
 
 ## Tools
+
+There are **6 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
 
 | Tool | What it does |
 |---|---|
@@ -42,7 +46,9 @@ Call `distribute_status` first — it confirms the key reached the gateway, and 
 | `distribute_list_workflows` | Available workflows, including ones written in a named expert's style |
 | `distribute_suggest_icp` | Read a brand's site and propose an ideal customer profile |
 | `distribute_list_campaigns` | Every campaign, filterable by status |
-| `distribute_campaign_stats` | One campaign's numbers |
+| `distribute_campaign_stats` | One campaign's results, success first |
+
+**How stats read.** `distribute_campaign_stats` leads with a one-line `headline` and a `summary`: meetings booked, positive replies, money earned and ROI (null for now: the API does not serve them, and `summary.notServed` says so), delivery rate, then volume and cost. The gateway's own figures follow unchanged, and bounces, unsubscribes and negative replies close the response in `failureDetails`. Zeros are shown as zeros. An assistant reading the response should report it in that order.
 
 **These tools read; they do not write.** A customer funds a sales funnel and picks
 audiences, and operating a campaign is something we do with them rather than
