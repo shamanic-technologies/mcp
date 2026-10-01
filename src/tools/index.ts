@@ -22,7 +22,10 @@ import { getConfigStatus, callApi } from "../lib/api-client.js";
 // Tool definitions with Zod schemas
 export const toolDefinitions = {
   distribute_status: {
-    description: "Check the distribute.you connection status and configuration",
+    description:
+      "Check the connection and say who the key belongs to: the organization's name, its brands, and the user. " +
+      "A key belongs to ONE user in ONE organization (the one active when the key was created), never to a brand, and carries no staff or beta powers. " +
+      "Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
     schema: z.object({}),
   },
   distribute_list_workflows: {
@@ -38,7 +41,10 @@ export const toolDefinitions = {
     }),
   },
   distribute_campaign_stats: {
-    description: "Get statistics for a specific campaign",
+    description:
+      "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; " +
+      "bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. " +
+      "Show zeros plainly (0 meetings is still reported).",
     schema: z.object({
       campaign_id: z.string().describe("Campaign ID to get stats for"),
     }),
@@ -101,21 +107,63 @@ async function handleStatus() {
   }
 
   // Check API connectivity
-  const result = await callApi("/v1/me");
-  
+  const result = await callApi<Record<string, unknown>>("/v1/me");
+
   if (result.error) {
     return {
       status: "error",
       message: result.error,
       apiUrl: status.apiUrl,
+      // The gateway answers a revoked, deleted and mistyped key with the same
+      // message, so this server cannot tell them apart either. Say so, rather
+      // than let the caller guess one of the three.
+      hint:
+        "The API refused this key. A revoked, deleted or mistyped key all look the same from here. " +
+        "Check the key at https://dashboard.distribute.you (organization, then API Key) and send it as `Authorization: Bearer <key>`.",
     };
   }
 
+  const me = result.data as Record<string, unknown>;
+  const brands = await callApi<{ brands: Array<Record<string, unknown>> }>("/v1/brands");
+  if (brands.error) throw new Error(brands.error);
+
   return {
     status: "connected",
+    organization: {
+      id: me.orgId ?? null,
+      name: organizationNameOf(me),
+    },
+    brands: (brands.data as { brands: Array<Record<string, unknown>> }).brands.map((b) => ({
+      id: b.id ?? null,
+      name: b.name ?? null,
+      domain: b.domain ?? null,
+    })),
+    keyScope: KEY_SCOPE,
     apiUrl: status.apiUrl,
-    user: result.data,
+    user: me,
   };
+}
+
+/**
+ * What a key IS, stated where an assistant reads it. Without it, one told a
+ * user their key "belongs to a user account, not a brand" and could not explain
+ * why it read a client organization: the key belongs to whichever organization
+ * was active when it was created.
+ */
+const KEY_SCOPE =
+  "This key belongs to one user in one organization: the organization that was active when the key was created. " +
+  "It reads that organization and all of its brands, nothing else. It never belongs to a single brand, " +
+  "and it never carries staff or beta powers. To read another organization, create a key while that organization is active.";
+
+/**
+ * `/v1/me` serves `userId`, `orgId` and `authType` today; api-service is adding
+ * the organization's name. Read it under the spellings it may land as, and say
+ * plainly when it is not served yet rather than invent one.
+ */
+function organizationNameOf(me: Record<string, unknown>): string | null {
+  const org = me.organization as Record<string, unknown> | undefined;
+  const name = me.orgName ?? me.organizationName ?? org?.name;
+  return typeof name === "string" && name ? name : null;
 }
 
 async function handleListWorkflows(args: Record<string, unknown>) {
@@ -198,7 +246,94 @@ async function handleCampaignStats(args: Record<string, unknown>) {
     throw new Error(result.error);
   }
 
-  return withoutOpens(result.data as Record<string, unknown>);
+  const raw = withoutOpens(result.data) as Record<string, unknown>;
+  const summary = successFirstSummary(raw);
+
+  // Key order IS the reading order: an assistant summarizing this JSON reports
+  // what it reads first. Every field the gateway served stays, untouched, in
+  // between; only its position relative to the summary changed.
+  return {
+    headline: headlineOf(summary),
+    summary,
+    ...raw,
+    failureDetails: failureDetailsOf(raw),
+  };
+}
+
+type Summary = {
+  meetingsBooked: number | null;
+  positiveReplies: number | null;
+  moneyEarnedUsd: null;
+  roi: null;
+  deliveryRatePct: number | null;
+  delivered: number | null;
+  sent: number | null;
+  leadsContacted: number | null;
+  emailsSent: number | null;
+  costUsd: number | null;
+  notServed: string[];
+};
+
+const num = (v: unknown): number | null => (typeof v === "number" ? v : null);
+
+/**
+ * The owner's reading order: meetings and positive replies, money earned / ROI,
+ * delivery rate, then volume and cost. Every figure is read from the gateway's
+ * response; the delivery rate is the two counts it serves divided, nothing more.
+ * Money earned and ROI are not served by the API, so they are null and listed in
+ * `notServed` instead of guessed.
+ */
+function successFirstSummary(raw: Record<string, unknown>): Summary {
+  const recipients = (raw.recipientStats ?? {}) as Record<string, unknown>;
+  const detail = (recipients.repliesDetail ?? {}) as Record<string, unknown>;
+  const emails = (raw.emailStats ?? {}) as Record<string, unknown>;
+  const sent = num(recipients.sent);
+  const delivered = num(recipients.delivered);
+
+  return {
+    meetingsBooked: num(detail.meetingBooked),
+    positiveReplies: num(recipients.repliesPositive),
+    moneyEarnedUsd: null,
+    roi: null,
+    deliveryRatePct:
+      sent && delivered !== null ? Math.round((delivered / sent) * 1000) / 10 : null,
+    delivered,
+    sent,
+    leadsContacted: num(raw.leadsContacted),
+    emailsSent: num(emails.sent),
+    costUsd: num(raw.totalCostUsd),
+    notServed: ["moneyEarnedUsd", "roi"],
+  };
+}
+
+function headlineOf(s: Summary): string {
+  const count = (n: number | null) => (n === null ? "unknown" : String(n));
+  const delivery =
+    s.deliveryRatePct !== null
+      ? `${s.deliveryRatePct}% delivered (${s.delivered} of ${s.sent})`
+      : s.sent === 0
+        ? "no delivery rate yet (nothing sent)"
+        : "delivery rate unknown (not served)";
+  const cost = s.costUsd === null ? "" : `, $${s.costUsd.toFixed(2)} spent`;
+  return (
+    `${count(s.meetingsBooked)} meetings booked, ${count(s.positiveReplies)} positive replies, ${delivery}. ` +
+    `${count(s.leadsContacted)} leads contacted, ${count(s.emailsSent)} emails sent${cost}.`
+  );
+}
+
+/** Failures, last: the same numbers the raw figures carry, grouped where they belong. */
+function failureDetailsOf(raw: Record<string, unknown>) {
+  const recipients = (raw.recipientStats ?? {}) as Record<string, unknown>;
+  const detail = (recipients.repliesDetail ?? {}) as Record<string, unknown>;
+  const emails = (raw.emailStats ?? {}) as Record<string, unknown>;
+  return {
+    recipientsBounced: num(recipients.bounced),
+    emailsBounced: num(emails.bounced),
+    unsubscribed: num(recipients.unsubscribed),
+    negativeReplies: num(recipients.repliesNegative),
+    notInterested: num(detail.notInterested),
+    wrongPerson: num(detail.wrongPerson),
+  };
 }
 
 /**

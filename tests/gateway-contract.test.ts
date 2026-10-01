@@ -240,3 +240,17 @@ describe("suggest_icp calls the route that exists", () => {
     expect(src).toContain('callApi<{ brands: Array<{ id: string; domain?: string | null }> }>("/v1/brands")');
   });
 });
+
+/**
+ * An assistant once quoted an unverified "35 MCP tools" to a customer. The README
+ * states the count, and this keeps that count true.
+ */
+describe("the README states the real tool count", () => {
+  it("matches the tools the server registers", () => {
+    const count = Object.keys(toolDefinitions).length;
+    expect(read("README.md")).toContain(`There are **${count} tools**.`);
+    for (const name of Object.keys(toolDefinitions)) {
+      expect(read("README.md")).toContain("`" + name + "`");
+    }
+  });
+});
