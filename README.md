@@ -1,12 +1,12 @@
 # distribute.you MCP
 
-A remote [MCP](https://modelcontextprotocol.io) server for [distribute.you](https://distribute.you). Point any MCP client at it with your organization's API key and drive your account from there: list brands and workflows, create and stop campaigns, read stats, ask for an ICP suggestion.
+A remote [MCP](https://modelcontextprotocol.io) server for [distribute.you](https://distribute.you). Point any MCP client at it with your distribute.you API key and read your account from there: list brands and workflows, create and stop campaigns, read stats, ask for an ICP suggestion.
 
 It is a **remote HTTP server**, not an npx package. Nothing is published to npm and nothing is installed locally — a client connects over Streamable HTTP and authenticates with a header.
 
 ## Connecting
 
-Create a key at [dashboard.distribute.you](https://dashboard.distribute.you): open your organization, then **API Key**. The key carries that organization's identity, so anyone holding it can read and change the account — treat it like a password, and delete it from the same page to revoke it.
+Create a key at [dashboard.distribute.you](https://dashboard.distribute.you), under **API Key**. The key carries your identity, so anyone holding it can read every organization you belong to — treat it like a password, and delete it from the same page to revoke it.
 
 Claude Code:
 
@@ -31,9 +31,11 @@ Claude Desktop, Cursor, and other clients that take a JSON config:
 }
 ```
 
-Call `distribute_status` first — it confirms the key reached the gateway, names the organization and its brands, and says what to fix if the key was refused. The API cannot tell a revoked key from a mistyped one; both come back as a refusal.
+Call `distribute_status` first — it confirms the key reached the gateway, lists every organization the key reaches with its brands, and says what to fix if the key was refused. The API cannot tell a revoked key from a mistyped one; both come back as a refusal.
 
-**What a key covers.** A key belongs to one user in one organization: the organization that was active in the dashboard when the key was created. It reads that organization and all of its brands, nothing else. It never belongs to a single brand and never carries staff or beta powers. To read another organization, create a key while that organization is active.
+**What a key covers.** A key belongs to its user and reaches every organization that user is a member of (membership is checked on every request; distribute.you staff count as members of every organization). It never belongs to a single brand and never carries staff, admin or beta powers, even when its user has them.
+
+**Naming the organization.** Each call acts in a single organization. The tools that read brand or campaign data take an optional `brandId` (which selects the organization holding that brand) and an optional `orgId` (add it when a brand sits in several organizations). Take both from `distribute_status`. A user in a single organization can omit them. A user in several who names nothing gets the API's refusal back unchanged, `org_target_required` with its `message`, `fix` and the `organizations` to choose from; the server never picks one. The other refusals come back the same way: `brand_in_several_orgs`, `brands_span_orgs`, `org_not_member`, `org_not_found`, `brand_not_found`, `no_organization`, `membership_unavailable`.
 
 ## Tools
 
@@ -41,11 +43,11 @@ There are **6 tools**. The list below is the whole surface; the `/.well-known` d
 
 | Tool | What it does |
 |---|---|
-| `distribute_status` | Confirm the key works and report which gateway it reached |
-| `distribute_list_brands` | The brands (companies, websites) on the organization |
+| `distribute_status` | Confirm the key works and list every organization it reaches, with their brands |
+| `distribute_list_brands` | The brands (companies, websites) of the organization a call targets |
 | `distribute_list_workflows` | Available workflows, including ones written in a named expert's style |
 | `distribute_suggest_icp` | Read a brand's site and propose an ideal customer profile |
-| `distribute_list_campaigns` | Every campaign, filterable by status |
+| `distribute_list_campaigns` | The campaigns of one brand or organization, filterable by status |
 | `distribute_campaign_stats` | One campaign's results, success first |
 
 **How stats read.** `distribute_campaign_stats` leads with a one-line `headline` and a `summary`: meetings booked, positive replies, money earned and ROI (null for now: the API does not serve them, and `summary.notServed` says so), delivery rate (the ratio the API serves, shown as a percent; null when the API serves null), then volume and cost. The gateway's own figures follow unchanged, and bounces, unsubscribes and negative replies close the response in `failureDetails`. Zeros are shown as zeros. An assistant reading the response should report it in that order.
@@ -67,6 +69,6 @@ pnpm --filter "./shared/*" build
 pnpm dev
 ```
 
-`DISTRIBUTE_API_URL` overrides the gateway (defaults to `https://api.distribute.you`). The API key is never read from the environment — it arrives per request on the `Authorization` header, so one server serves many organizations.
+`DISTRIBUTE_API_URL` overrides the gateway (defaults to `https://api.distribute.you`). The API key is never read from the environment — it arrives per request on the `Authorization` header, so one server serves many users.
 
 `openapi.json` is generated by `pnpm generate:openapi`. Do not edit it by hand.

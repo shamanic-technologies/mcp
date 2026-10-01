@@ -11,9 +11,26 @@
 
 const API_BASE_URL = process.env.DISTRIBUTE_API_URL || "https://api.distribute.you";
 
+/**
+ * The gateway's refusal body, kept whole. A multi-org key that names no target
+ * gets `400 org_target_required` with `code`, `message`, `fix` and the
+ * `organizations` it can choose from; reducing that to `error` alone threw away
+ * the only part that tells the caller what to do next.
+ */
+export interface ApiErrorBody {
+  error?: string;
+  code?: string;
+  message?: string;
+  fix?: string;
+  organizations?: unknown;
+  [key: string]: unknown;
+}
+
 interface ApiResponse<T> {
   data?: T;
   error?: string;
+  errorBody?: ApiErrorBody;
+  status?: number;
 }
 
 // Store the current API key (set from request context)
@@ -53,8 +70,12 @@ export async function callApi<T>(
     });
 
     if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({ error: "Request failed" })) as { error?: string };
-      return { error: errorBody.error || `HTTP ${response.status}` };
+      const errorBody = await response.json().catch(() => null) as ApiErrorBody | null;
+      return {
+        error: errorBody?.error || `HTTP ${response.status}`,
+        errorBody: errorBody ?? undefined,
+        status: response.status,
+      };
     }
 
     const data = await response.json() as T;
