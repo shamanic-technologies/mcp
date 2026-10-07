@@ -88,7 +88,7 @@ export const toolDefinitions = {
     description: "List the cold email campaigns of one brand or organization. " + TARGET_HINT,
     schema: z.object({
       ...targetShape,
-      status: z.enum(["ongoing", "stopped", "all"]).optional().describe("Filter by campaign status. `ongoing` is the vocabulary the platform stores — an unrecognised value is not refused, it is ignored, and the whole list comes back."),
+      status: z.enum(["ongoing", "stopped", "all"]).optional().describe("Filter by campaign status: `ongoing` (running) or `stopped`. `all`, or no status, returns every campaign. Any other value is refused."),
     }),
   },
   distribute_campaign_stats: {
@@ -251,9 +251,11 @@ async function handleListWorkflows(args: Record<string, unknown>) {
 
 
 async function handleListCampaigns(args: Record<string, unknown>) {
-  const status = args.status || "all";
+  // The platform stores two statuses and refuses any other word with a 400, `all`
+  // included: "every campaign" is asked for by sending no status at all.
+  const status = args.status === "ongoing" || args.status === "stopped" ? args.status : undefined;
   const result = await callApi<{ campaigns: Array<Record<string, unknown>> }>(
-    withTarget(`/v1/campaigns?status=${status}`, args),
+    withTarget(status ? `/v1/campaigns?status=${status}` : "/v1/campaigns", args),
   );
 
   if (result.error) failWith(result);

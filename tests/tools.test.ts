@@ -133,16 +133,33 @@ describe("distribute_list_campaigns", () => {
 
     await handleToolCall("distribute_list_campaigns", {});
 
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns?status=all");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns");
+  });
+
+  // Production, 2026-10-07: campaign-service refuses any status but `ongoing` and
+  // `stopped` with a 400, so sending `status=all` (or defaulting to it) broke the
+  // tool for every caller that did not filter.
+  it("sends no status for `all`, so the platform returns every campaign", async () => {
+    mockCallApi.mockResolvedValue({ data: { campaigns: [] } });
+
+    await handleToolCall("distribute_list_campaigns", { status: "all", brandId: "b1" });
+
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns?brandId=b1");
+  });
+
+  it("forwards `stopped` as a filter", async () => {
+    mockCallApi.mockResolvedValue({ data: { campaigns: [] } });
+
+    await handleToolCall("distribute_list_campaigns", { status: "stopped", brandId: "b1" });
+
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns?status=stopped&brandId=b1");
   });
 
   it("offers the status vocabulary the gateway serves, and not a word it does not", () => {
     const schema = toolDefinitions.distribute_list_campaigns.schema;
 
-    // Measured against production: asking for `active` returned 132 stopped rows
-    // beside 2 running ones — the platform stores `ongoing`, and the gateway ignores
-    // a status it does not recognise rather than refusing it, so the filter silently
-    // did nothing at all.
+    // The platform stores `ongoing` and `stopped` and refuses any other word; `all`
+    // is the tool's own word for "no filter" and never reaches the platform.
     expect(schema.safeParse({ status: "ongoing" }).success).toBe(true);
     expect(schema.safeParse({ status: "stopped" }).success).toBe(true);
     expect(schema.safeParse({ status: "all" }).success).toBe(true);

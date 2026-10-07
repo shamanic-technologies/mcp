@@ -88,7 +88,7 @@
                     "stopped",
                     "all"
                   ],
-                  "description": "Filter by campaign status. `ongoing` is the vocabulary the platform stores — an unrecognised value is not refused, it is ignored, and the whole list comes back."
+                  "description": "Filter by campaign status: `ongoing` (running) or `stopped`. `all`, or no status, returns every campaign. Any other value is refused."
                 }
               },
               "additionalProperties": false
@@ -444,7 +444,7 @@
                       "stopped",
                       "all"
                     ],
-                    "description": "Filter by campaign status. `ongoing` is the vocabulary the platform stores — an unrecognised value is not refused, it is ignored, and the whole list comes back."
+                    "description": "Filter by campaign status: `ongoing` (running) or `stopped`. `all`, or no status, returns every campaign. Any other value is refused."
                   }
                 },
                 "additionalProperties": false
