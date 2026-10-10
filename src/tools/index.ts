@@ -522,7 +522,10 @@ function successFirstSummary(raw: Record<string, unknown>, served: Record<string
     sent: num(served.sent),
     leadsContacted: num(raw.leadsContacted),
     emailsSent: num(emails.sent),
-    costUsd: num(raw.totalCostUsd),
+    // The gateway's own headline cost (cents string, campaign-service's spend for the part).
+    // `totalCostUsd` is only set when the email writer reports one, so reading it left the cost
+    // out of nearly every headline while `totalCostInUsdCents` was served beside it.
+    costUsd: usd(typeof served.costInUsdCents === "string" ? served.costInUsdCents : null),
     notServed: ["moneyEarnedUsd", "roi"],
     unavailable: Array.isArray(served.unavailable) ? (served.unavailable as string[]) : [],
   };

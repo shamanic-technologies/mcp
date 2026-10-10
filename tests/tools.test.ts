@@ -499,6 +499,17 @@ describe("distribute_campaign_stats reads success first", () => {
     );
   });
 
+  it("states the cost the gateway serves even when the writer reports none", async () => {
+    const noWriterCost = stats({ totalCostUsd: undefined });
+    noWriterCost.headline = { ...noWriterCost.headline, costInUsdCents: "6296.9256987" };
+    routeStats(noWriterCost);
+
+    const out = await part();
+
+    expect(out.summary.costUsd).toBe(62.97);
+    expect(out.headline).toContain("$62.97 spent");
+  });
+
   it("tells the model to report success first", () => {
     expect(toolDefinitions.distribute_campaign_stats.description).toContain(
       "Report meetings, positive replies and delivery rate first",
