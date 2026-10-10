@@ -85,7 +85,12 @@ export const toolDefinitions = {
     }),
   },
   distribute_list_campaigns: {
-    description: "List the cold email campaigns of one brand or organization. " + TARGET_HINT,
+    description:
+      "List the campaigns of one brand or organization. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), " +
+      "a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), " +
+      "and its limits: `budget` and `volume` in words (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. " +
+      "A campaign with no budget set spends nothing. Report each campaign by its name. " +
+      TARGET_HINT,
     schema: z.object({
       ...targetShape,
       status: z.enum(["ongoing", "stopped", "all"]).optional().describe("Filter by campaign status: `ongoing` (running) or `stopped`. `all`, or no status, returns every campaign. Any other value is refused."),
@@ -93,12 +98,15 @@ export const toolDefinitions = {
   },
   distribute_campaign_stats: {
     description:
-      "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; " +
-      "bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. " +
+      "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, " +
+      "one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). " +
+      "Report the campaign by its name and never call an entry of `results` a campaign. " +
+      "Report meetings, positive replies and delivery rate first, then volume and cost; " +
+      "bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. " +
       "Show zeros plainly (0 meetings is still reported). " +
       TARGET_HINT,
     schema: z.object({
-      campaign_id: z.string().describe("Campaign ID to get stats for"),
+      campaign_id: z.string().describe("Campaign id, from distribute_list_campaigns"),
       ...targetShape,
     }),
   },
@@ -250,54 +258,221 @@ async function handleListWorkflows(args: Record<string, unknown>) {
 }
 
 
+/**
+ * A CAMPAIGN is what the customer launched and pays for (owner 2026-10-10): one brand, one offer,
+ * one sales funnel, run or paused as one, with a max budget and a max volume. campaign-service
+ * serves it (`/v1/sales-funnel-campaigns`); billing-service serves its limits and what the
+ * current period consumed (`/v1/brands/:b/offers/:o/sales-funnels/:id/caps`).
+ *
+ * Inside, a campaign runs one PART per channel step (a `/v1/campaigns` row each). A customer never
+ * reads a part as a campaign, never counts them as campaigns, never sees one named as one (owner
+ * rule 2026-10-11). So this tool lists campaigns only, and `distribute_campaign_stats` reports a
+ * campaign's results part by part, each named by what it brings in and the channel doing it.
+ */
+type FunnelUnit = { campaignId: string; featureSlug: string; legKey: string; status: string };
+type FunnelCampaign = {
+  id: string;
+  brandId: string;
+  offerId: string;
+  salesFunnelId: string;
+  salesFunnelName: string;
+  status: string;
+  stopReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+  units: FunnelUnit[];
+};
+type CapsBody = {
+  stated: boolean;
+  salesFunnelType?: string | null;
+  salesFunnelTypeUnavailableReason?: string | null;
+  maxBudget: {
+    amountCents: string;
+    period: string;
+    dailyBudgetCents?: string | null;
+    consumedCents: string | null;
+    remainingCents: string | null;
+    reached: boolean | null;
+    consumedUnavailableReason: string | null;
+  } | null;
+  maxVolume: {
+    count: number;
+    period: string;
+    unit: string;
+    consumed: number | null;
+    remaining: number | null;
+    reached: boolean | null;
+    consumedUnavailableReason: string | null;
+  } | null;
+};
+
+/** A served cents string as dollars (formatting only). Null stays null; garbage is logged and null. */
+function usd(cents: string | null | undefined): number | null {
+  if (cents == null) return null;
+  const n = Number(cents);
+  if (!Number.isFinite(n)) {
+    console.error("[mcp] unreadable cents from the API", { cents });
+    return null;
+  }
+  return Math.round(n) / 100;
+}
+
+const PERIOD_SUFFIX: Record<string, string> = { daily: "/day", weekly: "/week", monthly: "/month", one_off: " in total" };
+const periodSuffix = (p: string) => PERIOD_SUFFIX[p] ?? ` per ${p}`;
+
+/** The dashboard's words for a campaign's limits: "Max $10/day" (proactive), "Up to $1/day" (reactive). */
+function limitWords(type: string | null, caps: CapsBody): { budget: string | null; volume: string | null } {
+  const prefix = type === "proactive" ? "Max " : type === "reactive" ? "Up to " : "";
+  const b = caps.maxBudget;
+  const v = caps.maxVolume;
+  const amount = b ? usd(b.amountCents) : null;
+  const unit = v ? (v.unit === "first_contacts" ? "new people" : v.unit === "prospects_handled" ? "leads handled" : v.unit.replace(/_/g, " ")) : "";
+  return {
+    budget: b && amount !== null ? `${prefix}$${Math.round(amount).toLocaleString("en-US")}${periodSuffix(b.period)}` : null,
+    volume: v ? `${prefix}${v.count.toLocaleString("en-US")} ${unit}${periodSuffix(v.period)}` : null,
+  };
+}
+
+async function funnelCampaignCaps(c: FunnelCampaign, args: Record<string, unknown>) {
+  const path =
+    `/v1/brands/${encodeURIComponent(c.brandId)}/offers/${encodeURIComponent(c.offerId)}` +
+    `/sales-funnels/${encodeURIComponent(c.salesFunnelId)}/caps`;
+  const result = await callApi<CapsBody>(withTarget(path, args));
+  if (result.error) failWith(result);
+  const caps = result.data as CapsBody;
+  const type = caps.salesFunnelType === "proactive" || caps.salesFunnelType === "reactive" ? caps.salesFunnelType : null;
+  if (!type) console.error("[mcp] no campaign type served", { id: c.id, reason: caps.salesFunnelTypeUnavailableReason ?? null });
+  const words = limitWords(type, caps);
+  return {
+    type,
+    budget: words.budget,
+    volume: words.volume,
+    // billing's own per-day figure (a reactive campaign's "up to" counts 0 a day: it spends only when something happens).
+    maxBudgetDailyUsd: caps.maxBudget ? usd(caps.maxBudget.dailyBudgetCents) : null,
+    maxBudget: caps.maxBudget
+      ? {
+          amountUsd: usd(caps.maxBudget.amountCents),
+          period: caps.maxBudget.period,
+          spentThisPeriodUsd: usd(caps.maxBudget.consumedCents),
+          remainingUsd: usd(caps.maxBudget.remainingCents),
+          reached: caps.maxBudget.reached,
+          spentUnavailableReason: caps.maxBudget.consumedUnavailableReason,
+        }
+      : null,
+    maxVolume: caps.maxVolume
+      ? {
+          count: caps.maxVolume.count,
+          unit: caps.maxVolume.unit,
+          period: caps.maxVolume.period,
+          usedThisPeriod: caps.maxVolume.consumed,
+          remaining: caps.maxVolume.remaining,
+          reached: caps.maxVolume.reached,
+          usedUnavailableReason: caps.maxVolume.consumedUnavailableReason,
+        }
+      : null,
+    // No max budget stated = nothing funds it: it spends nothing until one is set.
+    noBudgetSet: !caps.maxBudget,
+  };
+}
+
 async function handleListCampaigns(args: Record<string, unknown>) {
   // The platform stores two statuses and refuses any other word with a 400, `all`
   // included: "every campaign" is asked for by sending no status at all.
   const status = args.status === "ongoing" || args.status === "stopped" ? args.status : undefined;
-  const result = await callApi<{ campaigns: Array<Record<string, unknown>> }>(
-    withTarget(status ? `/v1/campaigns?status=${status}` : "/v1/campaigns", args),
+  const result = await callApi<{ salesFunnelCampaigns: FunnelCampaign[] }>(
+    withTarget(status ? `/v1/sales-funnel-campaigns?status=${status}` : "/v1/sales-funnel-campaigns", args),
   );
 
   if (result.error) failWith(result);
 
-  const campaigns = (result.data as { campaigns: Array<Record<string, unknown>> }).campaigns;
+  const listed = (result.data as { salesFunnelCampaigns: FunnelCampaign[] }).salesFunnelCampaigns;
 
-  // A projection, not the row. The gateway returns 34 fields per campaign including
-  // the brand's whole offer, ~380 characters of it each, and one real account's 134
-  // campaigns came to 322KB — which an MCP client refuses outright, so the tool
-  // returned nothing usable at all. These fields are 26KB for the same rows.
-  // Anything deeper belongs to a per-campaign tool, where one row can afford it.
-  return {
-    campaigns: campaigns.map((c) => ({
+  // A projection: name, status, limits. Parts are not listed (they are not campaigns).
+  const campaigns = await Promise.all(
+    listed.map(async (c) => ({
       id: c.id,
-      name: c.name,
+      name: c.salesFunnelName,
       status: c.status,
       stopReason: c.stopReason ?? null,
-      funnelKey: c.funnelKey ?? null,
-      brandIds: c.brandIds ?? null,
-      workflowSlug: c.workflowSlug ?? null,
-      maxBudgetDailyUsd: c.maxBudgetDailyUsd ?? null,
-      createdAt: c.createdAt ?? null,
-      updatedAt: c.updatedAt ?? null,
+      brandId: c.brandId,
+      offerId: c.offerId,
+      ...(await funnelCampaignCaps(c, args)),
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
     })),
-  };
+  );
+  return { campaigns };
+}
+
+type PublicCatalogue = {
+  channels?: Array<{ slug?: string; name?: string; stepTransitions?: Array<{ legKey?: string; to?: { label?: string } | null }> | null }> | null;
+  legKeyCorrespondence?: Array<{ legacyLegKey?: string; legKey?: string }> | null;
+};
+
+/** What a part brings in and the channel doing it, read off the platform's public catalogue. */
+function partNames(catalogue: PublicCatalogue, u: FunnelUnit): { bringsIn: string | null; channel: string | null } {
+  const channel = (catalogue.channels ?? []).find((c) => c.slug === u.featureSlug);
+  // An outbound step has two spellings while the platform migrates; the catalogue serves the pairs.
+  const twins = new Set([u.legKey]);
+  for (const p of catalogue.legKeyCorrespondence ?? []) {
+    if (p.legacyLegKey === u.legKey && p.legKey) twins.add(p.legKey);
+    if (p.legKey === u.legKey && p.legacyLegKey) twins.add(p.legacyLegKey);
+  }
+  const step = (channel?.stepTransitions ?? []).find((t) => t.legKey && twins.has(t.legKey));
+  const names = { bringsIn: step?.to?.label ?? null, channel: channel?.name ?? null };
+  if (!names.bringsIn || !names.channel) console.error("[mcp] a campaign part is not in the public catalogue", { featureSlug: u.featureSlug, legKey: u.legKey });
+  return names;
 }
 
 async function handleCampaignStats(args: Record<string, unknown>) {
-  const result = await callApi<Record<string, unknown>>(
-    withTarget(`/v1/campaigns/${args.campaign_id}/stats`, args),
+  const id = encodeURIComponent(String(args.campaign_id));
+  const one = await callApi<{ salesFunnelCampaign: FunnelCampaign }>(withTarget(`/v1/sales-funnel-campaigns/${id}`, args));
+  if (one.error) {
+    if (one.status === 404) {
+      throw new Error(
+        `No campaign ${String(args.campaign_id)} in this organization. Take the campaign id from distribute_list_campaigns. ${TARGET_HINT}`,
+      );
+    }
+    failWith(one);
+  }
+  const campaign = (one.data as { salesFunnelCampaign: FunnelCampaign }).salesFunnelCampaign;
+
+  const catalogueRead = await callApi<PublicCatalogue>("/v1/public/channels");
+  if (catalogueRead.error) failWith(catalogueRead);
+  const catalogue = catalogueRead.data as PublicCatalogue;
+
+  const results = await Promise.all(
+    campaign.units.map(async (u) => {
+      const stats = await callApi<Record<string, unknown>>(withTarget(`/v1/campaigns/${encodeURIComponent(u.campaignId)}/stats`, args));
+      if (stats.error) failWith(stats);
+      return { ...partNames(catalogue, u), ...resultsOf(stats.data) };
+    }),
   );
 
-  if (result.error) failWith(result);
+  const state = campaign.status === "ongoing" ? "running" : campaign.status;
+  const lines = results.map((r) => `${r.bringsIn ?? "Unnamed step"} (${r.channel ?? "unnamed channel"}): ${r.headline}`);
+  return {
+    headline:
+      results.length === 0
+        ? `${campaign.salesFunnelName} (${state}): nothing has run in this campaign yet.`
+        : `${campaign.salesFunnelName} (${state}). ${lines.join(" ")}`,
+    campaign: { id: campaign.id, name: campaign.salesFunnelName, status: campaign.status, brandId: campaign.brandId, offerId: campaign.offerId },
+    // One entry per part of the campaign, each with what it brings in and the channel doing it.
+    // Report the campaign by its name; a part is never a campaign of its own.
+    results,
+  };
+}
 
-  // The gateway serves its own success-first `headline` block; its figures are
-  // folded into `summary` so the one-line sentence keeps the `headline` key.
-  const { headline: served, ...raw } = withoutOpens(result.data) as Record<string, unknown>;
+/**
+ * One part's results, success first. The gateway serves its own success-first `headline`
+ * block; its figures are folded into `summary` so the one-line sentence keeps the `headline`
+ * key. Key order IS the reading order: an assistant summarizing this JSON reports what it reads
+ * first. Every other figure the gateway served stays, untouched, in between.
+ */
+function resultsOf(data: unknown) {
+  // The part's own row id is not a campaign id a customer can use: dropped.
+  const { headline: served, campaignId: _partId, ...raw } = withoutOpens(data) as Record<string, unknown>;
   const summary = successFirstSummary(raw, (served ?? {}) as Record<string, unknown>);
-
-  // Key order IS the reading order: an assistant summarizing this JSON reports
-  // what it reads first. Every other field the gateway served stays, untouched,
-  // in between; only its position relative to the summary changed.
   return {
     headline: headlineOf(summary),
     summary,
