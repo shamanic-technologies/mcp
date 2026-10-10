@@ -129,30 +129,30 @@ describe("distribute_list_workflows", () => {
 
 describe("distribute_list_campaigns", () => {
   it("defaults to every campaign", async () => {
-    mockCallApi.mockResolvedValue({ data: { campaigns: [] } });
+    mockCallApi.mockResolvedValue({ data: { salesFunnelCampaigns: [] } });
 
     await handleToolCall("distribute_list_campaigns", {});
 
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/sales-funnel-campaigns");
   });
 
   // Production, 2026-10-07: campaign-service refuses any status but `ongoing` and
   // `stopped` with a 400, so sending `status=all` (or defaulting to it) broke the
   // tool for every caller that did not filter.
   it("sends no status for `all`, so the platform returns every campaign", async () => {
-    mockCallApi.mockResolvedValue({ data: { campaigns: [] } });
+    mockCallApi.mockResolvedValue({ data: { salesFunnelCampaigns: [] } });
 
     await handleToolCall("distribute_list_campaigns", { status: "all", brandId: "b1" });
 
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns?brandId=b1");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/sales-funnel-campaigns?brandId=b1");
   });
 
   it("forwards `stopped` as a filter", async () => {
-    mockCallApi.mockResolvedValue({ data: { campaigns: [] } });
+    mockCallApi.mockResolvedValue({ data: { salesFunnelCampaigns: [] } });
 
     await handleToolCall("distribute_list_campaigns", { status: "stopped", brandId: "b1" });
 
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns?status=stopped&brandId=b1");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/sales-funnel-campaigns?status=stopped&brandId=b1");
   });
 
   it("offers the status vocabulary the gateway serves, and not a word it does not", () => {
@@ -164,6 +164,129 @@ describe("distribute_list_campaigns", () => {
     expect(schema.safeParse({ status: "stopped" }).success).toBe(true);
     expect(schema.safeParse({ status: "all" }).success).toBe(true);
     expect(schema.safeParse({ status: "active" }).success).toBe(false);
+  });
+});
+
+// A campaign as the deployed gateway serves it on GET /v1/sales-funnel-campaigns (NOVEMIQ's
+// "Bliss", prod 2026-10-11): one campaign, run as one, with a part per channel step.
+const bliss = {
+  id: "sfc-bliss",
+  orgId: "o1",
+  brandId: "b1",
+  offerId: "off1",
+  salesFunnelId: "lead_found_to_conversation@sales-cold-email-outreach+conversation_to_meeting_booked",
+  salesFunnelName: "Bliss",
+  status: "ongoing",
+  stopReason: null,
+  createdAt: "2026-10-10T13:48:01.383Z",
+  updatedAt: "2026-10-10T13:48:01.383Z",
+  units: [
+    { campaignId: "u-email", pipeId: "sales-cold-email-outreach|lead_found_to_conversation", featureSlug: "sales-cold-email-outreach", legKey: "lead_found_to_conversation", status: "ongoing", workflowSlug: "wf", name: "Bliss 7fcf42ab - NOVEMIQ (Positive replies, Cold email)" },
+    { campaignId: "u-apollo", pipeId: "sourcing-apollo-cold-filters|start_to_lead_found", featureSlug: "sourcing-apollo-cold-filters", legKey: "start_to_lead_found", status: "ongoing", workflowSlug: null, name: "Bliss 7fcf42ab - sourcing-apollo-cold-filters - x" },
+  ],
+};
+// billing's caps read for it (prod body, trimmed).
+const blissCaps = {
+  salesFunnelId: bliss.salesFunnelId,
+  stated: true,
+  salesFunnelName: "Bliss",
+  salesFunnelType: "proactive",
+  salesFunnelTypeUnavailableReason: null,
+  maxBudget: {
+    amountCents: "1000.0000000000",
+    period: "daily",
+    dailyBudgetCents: "1000.0000000000",
+    consumedCents: "1006.0514720000",
+    remainingCents: "0.0000000000",
+    reached: true,
+    consumedUnavailableReason: null,
+  },
+  maxVolume: null,
+};
+const catalogue = {
+  channels: [
+    { slug: "sales-cold-email-outreach", name: "Sales Cold Email Outreach", stepTransitions: [{ legKey: "lead_found_to_conversation", to: { key: "conversation", label: "Positive reply" } }] },
+    { slug: "sourcing-apollo-cold-filters", name: "Apollo Cold Filters", stepTransitions: [{ legKey: "start_to_lead_found", to: { key: "lead_found", label: "Lead found" } }] },
+  ],
+  legKeyCorrespondence: [{ legacyLegKey: "start_to_conversation", legKey: "lead_found_to_conversation" }],
+};
+
+/** Answer each gateway path from a table; an unknown path fails the test loudly. */
+function routeApi(table: Record<string, unknown>) {
+  mockCallApi.mockImplementation(async (path: string) => {
+    const bare = path.split("?")[0]!;
+    if (!(bare in table)) throw new Error(`unexpected gateway call ${path}`);
+    return { data: table[bare] };
+  });
+}
+
+describe("distribute_list_campaigns lists campaigns, never their parts", () => {
+  const capsPath = `/v1/brands/b1/offers/off1/sales-funnels/${encodeURIComponent(bliss.salesFunnelId)}/caps`;
+
+  it("names each campaign, with its type and limits in words", async () => {
+    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: blissCaps });
+
+    const out = (await handleToolCall("distribute_list_campaigns", { brandId: "b1" })) as { campaigns: Array<Record<string, any>> };
+
+    expect(out.campaigns).toHaveLength(1);
+    const c = out.campaigns[0]!;
+    expect(c.id).toBe("sfc-bliss");
+    expect(c.name).toBe("Bliss");
+    expect(c.status).toBe("ongoing");
+    expect(c.type).toBe("proactive");
+    expect(c.budget).toBe("Max $10/day");
+    expect(c.volume).toBeNull();
+    expect(c.maxBudgetDailyUsd).toBe(10);
+    expect(c.maxBudget).toEqual({ amountUsd: 10, period: "daily", spentThisPeriodUsd: 10.06, remainingUsd: 0, reached: true, spentUnavailableReason: null });
+    expect(c.noBudgetSet).toBe(false);
+    expect(mockCallApi).toHaveBeenCalledWith(`${capsPath}?brandId=b1`);
+  });
+
+  it("hands back no part, no part name and no part count", async () => {
+    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: blissCaps });
+
+    const out = await handleToolCall("distribute_list_campaigns", { brandId: "b1" });
+    const text = JSON.stringify(out);
+
+    expect(text).not.toContain("u-email");
+    expect(text).not.toContain("NOVEMIQ (Positive replies");
+    expect(text).not.toContain("units");
+    expect(text.toLowerCase()).not.toMatch(/funnel|pipe|\bleg/);
+  });
+
+  it("says a reactive campaign's limit as an upper bound", async () => {
+    routeApi({
+      "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] },
+      [capsPath]: {
+        ...blissCaps,
+        salesFunnelType: "reactive",
+        maxBudget: { ...blissCaps.maxBudget, amountCents: "100", dailyBudgetCents: "0" },
+        maxVolume: { count: 50, period: "weekly", unit: "prospects_handled", consumed: 3, remaining: 47, reached: false, consumedUnavailableReason: null },
+      },
+    });
+
+    const out = (await handleToolCall("distribute_list_campaigns", {})) as { campaigns: Array<Record<string, any>> };
+
+    expect(out.campaigns[0]!.budget).toBe("Up to $1/day");
+    expect(out.campaigns[0]!.volume).toBe("Up to 50 leads handled/week");
+    expect(out.campaigns[0]!.maxBudgetDailyUsd).toBe(0);
+  });
+
+  it("says when no budget is set", async () => {
+    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: { ...blissCaps, stated: false, maxBudget: null } });
+
+    const out = (await handleToolCall("distribute_list_campaigns", {})) as { campaigns: Array<Record<string, any>> };
+
+    expect(out.campaigns[0]!.budget).toBeNull();
+    expect(out.campaigns[0]!.noBudgetSet).toBe(true);
+  });
+
+  it("fails loudly when a campaign's limits cannot be read", async () => {
+    mockCallApi.mockImplementation(async (path: string) =>
+      path.startsWith("/v1/sales-funnel-campaigns") ? { data: { salesFunnelCampaigns: [bliss] } } : { error: "Failed to read the sales funnel caps", status: 502 },
+    );
+
+    await expect(handleToolCall("distribute_list_campaigns", {})).rejects.toThrow("Failed to read the sales funnel caps");
   });
 });
 
@@ -221,11 +344,23 @@ describe("distribute_campaign_stats reads success first", () => {
     ...overrides,
   });
 
-  it("leads with meetings, positive replies and delivery rate; failures come last", async () => {
-    mockCallApi.mockResolvedValue({ data: stats() });
+  // A one-part campaign whose part serves `body` on GET /v1/campaigns/{id}/stats.
+  const routeStats = (body: unknown) =>
+    routeApi({
+      "/v1/sales-funnel-campaigns/c1": { salesFunnelCampaign: { ...bliss, id: "c1", units: [bliss.units[0]] } },
+      "/v1/public/channels": catalogue,
+      "/v1/campaigns/u-email/stats": body,
+    });
+  const part = async () => {
+    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as { results: Array<Record<string, any>> };
+    return out.results[0]!;
+  };
 
-    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, unknown>;
-    const keys = Object.keys(out);
+  it("leads with meetings, positive replies and delivery rate; failures come last", async () => {
+    routeStats(stats());
+
+    const out = (await part()) as Record<string, unknown>;
+    const keys = Object.keys(out).filter((k) => k !== "bringsIn" && k !== "channel");
 
     expect(keys[0]).toBe("headline");
     expect(keys[1]).toBe("summary");
@@ -255,11 +390,11 @@ describe("distribute_campaign_stats reads success first", () => {
   });
 
   it("keeps every field the gateway served (live callers read them)", async () => {
-    mockCallApi.mockResolvedValue({ data: stats() });
+    routeStats(stats());
 
-    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
+    const out = await part();
 
-    for (const k of ["campaignId", "leadsServed", "leadsContacted", "emailsGenerated", "totalCostUsd", "recipientStats", "emailStats"]) {
+    for (const k of ["leadsServed", "leadsContacted", "emailsGenerated", "totalCostUsd", "recipientStats", "emailStats"]) {
       expect(out).toHaveProperty(k);
     }
     expect(out.recipientStats.bounced).toBe(13);
@@ -268,9 +403,9 @@ describe("distribute_campaign_stats reads success first", () => {
   it("shows zeros plainly and invents no money figure", async () => {
     const zero = stats();
     zero.recipientStats = { ...zero.recipientStats, repliesPositive: 0, repliesDetail: { ...zero.recipientStats.repliesDetail, meetingBooked: 0 } };
-    mockCallApi.mockResolvedValue({ data: zero });
+    routeStats(zero);
 
-    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
+    const out = await part();
 
     expect(out.headline).toMatch(/^0 meetings booked, 0 positive replies/);
     expect(out.summary.meetingsBooked).toBe(0);
@@ -283,9 +418,9 @@ describe("distribute_campaign_stats reads success first", () => {
     // Counts that would divide to 97.6%: the served ratio wins.
     const served = stats();
     served.headline = { ...served.headline, deliveryRate: 0.5 };
-    mockCallApi.mockResolvedValue({ data: served });
+    routeStats(served);
 
-    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
+    const out = await part();
 
     expect(out.summary.deliveryRatePct).toBe(50);
     expect(out.headline).toContain("50% delivered (518 of 531)");
@@ -294,9 +429,9 @@ describe("distribute_campaign_stats reads success first", () => {
   it("gives no delivery rate before anything is sent, and says why", async () => {
     const empty = stats();
     empty.headline = { ...empty.headline, deliveryRate: null, delivered: 0, sent: 0 };
-    mockCallApi.mockResolvedValue({ data: empty });
+    routeStats(empty);
 
-    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
+    const out = await part();
 
     expect(out.summary.deliveryRatePct).toBeNull();
     expect(out.headline).toContain("no delivery rate yet (nothing sent)");
@@ -305,12 +440,63 @@ describe("distribute_campaign_stats reads success first", () => {
   it("keeps a null served rate null when something was sent", async () => {
     const contradicted = stats();
     contradicted.headline = { ...contradicted.headline, deliveryRate: null };
-    mockCallApi.mockResolvedValue({ data: contradicted });
+    routeStats(contradicted);
 
-    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
+    const out = await part();
 
     expect(out.summary.deliveryRatePct).toBeNull();
     expect(out.headline).toContain("delivery rate unknown");
+  });
+
+  it("reports a campaign by its name, part by part, each named by what it brings in and its channel", async () => {
+    routeApi({
+      "/v1/sales-funnel-campaigns/sfc-bliss": { salesFunnelCampaign: bliss },
+      "/v1/public/channels": catalogue,
+      "/v1/campaigns/u-email/stats": stats(),
+      "/v1/campaigns/u-apollo/stats": stats({ campaignId: "u-apollo" }),
+    });
+
+    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "sfc-bliss", brandId: "b1" })) as Record<string, any>;
+
+    expect(out.campaign).toEqual({ id: "sfc-bliss", name: "Bliss", status: "ongoing", brandId: "b1", offerId: "off1" });
+    expect(out.results.map((r: any) => [r.bringsIn, r.channel])).toEqual([
+      ["Positive reply", "Sales Cold Email Outreach"],
+      ["Lead found", "Apollo Cold Filters"],
+    ]);
+    expect(out.headline).toMatch(/^Bliss \(running\)\. Positive reply \(Sales Cold Email Outreach\): 1 meetings booked/);
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns/u-email/stats?brandId=b1");
+    // A part's own id and name never reach the customer as a campaign.
+    const text = JSON.stringify(out);
+    expect(text).not.toContain("u-email");
+    expect(text).not.toContain("u-apollo");
+    expect(text).not.toContain("NOVEMIQ (Positive replies");
+  });
+
+  it("finds a part stated under the old spelling of its step", async () => {
+    routeApi({
+      "/v1/sales-funnel-campaigns/c1": { salesFunnelCampaign: { ...bliss, id: "c1", units: [{ ...bliss.units[0], legKey: "start_to_conversation" }] } },
+      "/v1/public/channels": catalogue,
+      "/v1/campaigns/u-email/stats": stats(),
+    });
+
+    expect((await part()).bringsIn).toBe("Positive reply");
+  });
+
+  it("says plainly when nothing has run in the campaign yet", async () => {
+    routeApi({ "/v1/sales-funnel-campaigns/c1": { salesFunnelCampaign: { ...bliss, id: "c1", status: "stopped", units: [] } }, "/v1/public/channels": catalogue });
+
+    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
+
+    expect(out.headline).toBe("Bliss (stopped): nothing has run in this campaign yet.");
+    expect(out.results).toEqual([]);
+  });
+
+  it("points an unknown id back to distribute_list_campaigns", async () => {
+    mockCallApi.mockResolvedValue({ error: "Sales funnel campaign not found", status: 404 });
+
+    await expect(handleToolCall("distribute_campaign_stats", { campaign_id: "old-id" })).rejects.toThrow(
+      "No campaign old-id in this organization. Take the campaign id from distribute_list_campaigns.",
+    );
   });
 
   it("tells the model to report success first", () => {
@@ -377,8 +563,8 @@ describe("distribute_status says whose key this is", () => {
 describe("every brand/campaign read passes the caller's target through", () => {
   const cases: Array<[string, Record<string, unknown>, string, unknown]> = [
     ["distribute_list_brands", {}, "/v1/brands", { brands: [] }],
-    ["distribute_list_campaigns", { status: "ongoing" }, "/v1/campaigns?status=ongoing", { campaigns: [] }],
-    ["distribute_campaign_stats", { campaign_id: "c1" }, "/v1/campaigns/c1/stats", {}],
+    ["distribute_list_campaigns", { status: "ongoing" }, "/v1/sales-funnel-campaigns?status=ongoing", { salesFunnelCampaigns: [] }],
+    ["distribute_campaign_stats", { campaign_id: "c1" }, "/v1/sales-funnel-campaigns/c1", { salesFunnelCampaign: { ...bliss, id: "c1", units: [] } }],
     ["distribute_list_workflows", {}, "/v1/workflows", { workflows: [] }],
   ];
 

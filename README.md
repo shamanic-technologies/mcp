@@ -47,10 +47,12 @@ There are **6 tools**. The list below is the whole surface; the `/.well-known` d
 | `distribute_list_brands` | The brands (companies, websites) of the organization a call targets |
 | `distribute_list_workflows` | Available workflows, including ones written in a named expert's style |
 | `distribute_suggest_icp` | Read a brand's site and propose an ideal customer profile |
-| `distribute_list_campaigns` | The campaigns of one brand or organization, filterable by status |
-| `distribute_campaign_stats` | One campaign's results, success first |
+| `distribute_list_campaigns` | The campaigns of one brand or organization, with type and limits, filterable by status |
+| `distribute_campaign_stats` | One campaign's results, part by part, success first |
 
-**How stats read.** `distribute_campaign_stats` leads with a one-line `headline` and a `summary`: meetings booked, positive replies, money earned and ROI (null for now: the API does not serve them, and `summary.notServed` says so), delivery rate (the ratio the API serves, shown as a percent; null when the API serves null), then volume and cost. The gateway's own figures follow unchanged, and bounces, unsubscribes and negative replies close the response in `failureDetails`. Zeros are shown as zeros. An assistant reading the response should report it in that order.
+**What a campaign is.** A campaign is what the customer launched: one brand, one offer, run or paused as one, with a max budget and a max volume ("Max $10/day" when it reaches out on its own, "Up to $1/day" when it acts on what happens). `distribute_list_campaigns` lists those, and only those. Inside, a campaign runs one part per channel step; a part is never listed, counted or named as a campaign.
+
+**How stats read.** `distribute_campaign_stats` takes a campaign id from `distribute_list_campaigns` and returns the campaign's name and status, a one-line `headline`, and `results`: one entry per part, named by what it brings in (`bringsIn`, such as Positive reply or Lead found) and the channel doing it (`channel`). Each entry leads with its own `headline` and a `summary`: meetings booked, positive replies, money earned and ROI (null for now: the API does not serve them, and `summary.notServed` says so), delivery rate (the ratio the API serves, shown as a percent; null when the API serves null), then volume and cost. The gateway's own figures follow unchanged, and bounces, unsubscribes and negative replies close the response in `failureDetails`. Zeros are shown as zeros. An assistant reading the response should report it in that order.
 
 **These tools read; they do not write.** A customer funds a sales funnel and picks
 audiences, and operating a campaign is something we do with them rather than

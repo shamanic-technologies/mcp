@@ -66,7 +66,7 @@
         }
       },
       "distribute_list_campaigns": {
-        "description": "List the cold email campaigns of one brand or organization. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "List the campaigns of one brand or organization. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its limits: `budget` and `volume` in words (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no budget set spends nothing. Report each campaign by its name. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_campaigns",
           "definitions": {
@@ -98,7 +98,7 @@
         }
       },
       "distribute_campaign_stats": {
-        "description": "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_campaign_stats",
           "definitions": {
@@ -107,7 +107,7 @@
               "properties": {
                 "campaign_id": {
                   "type": "string",
-                  "description": "Campaign ID to get stats for"
+                  "description": "Campaign id, from distribute_list_campaigns"
                 },
                 "brandId": {
                   "type": "string",
@@ -421,7 +421,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List the cold email campaigns of one brand or organization. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "List the campaigns of one brand or organization. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its limits: `budget` and `volume` in words (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no budget set spends nothing. Report each campaign by its name. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_list_campaigns. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_campaigns\".",
         "requestBody": {
           "content": {
@@ -488,7 +488,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Get one campaign's results. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. The response is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_campaign_stats. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_campaign_stats\".",
         "requestBody": {
           "content": {
@@ -498,7 +498,7 @@
                 "properties": {
                   "campaign_id": {
                     "type": "string",
-                    "description": "Campaign ID to get stats for"
+                    "description": "Campaign id, from distribute_list_campaigns"
                   },
                   "brandId": {
                     "type": "string",

@@ -167,7 +167,7 @@ describe("list_campaigns is a projection, not the row", () => {
       src.indexOf("async function handleCampaignStats("),
     );
     expect(body.length).toBeGreaterThan(0);
-    expect(body).toContain("campaigns.map(");
+    expect(body).toContain("listed.map(");
     expect(body).not.toMatch(/return result\.data;/);
   });
 
@@ -176,7 +176,7 @@ describe("list_campaigns is a projection, not the row", () => {
       src.indexOf("async function handleListCampaigns("),
       // Stop at the projection's closing brace: the doc comment BELOW this function
       // names the omitted field, and a slice that ran past it would fail on prose.
-      src.indexOf("  };\n}", src.indexOf("async function handleListCampaigns(")),
+      src.indexOf("  return { campaigns };\n}", src.indexOf("async function handleListCampaigns(")),
     );
     expect(body.length).toBeGreaterThan(0);
     expect(body).not.toContain("feature" + "Inputs");
@@ -198,24 +198,29 @@ describe("list_campaigns is a projection, not the row", () => {
 describe("campaign_stats reports no opens", () => {
   it("strips them at every depth", async () => {
     const { callApi } = await import("../src/lib/api-client.js");
-    vi.mocked(callApi).mockResolvedValue({
-      data: {
-        campaignId: "c1",
-        recipientStats: { sent: 10, opened: 3, clicked: 1 },
-        emailStats: {
-          sent: 10,
-          opened: 3,
-          stepStats: [{ step: 1, sent: 10, opened: 3, clicked: 1 }],
-        },
+    const partStats = {
+      campaignId: "u1",
+      recipientStats: { sent: 10, opened: 3, clicked: 1 },
+      emailStats: {
+        sent: 10,
+        opened: 3,
+        stepStats: [{ step: 1, sent: 10, opened: 3, clicked: 1 }],
       },
+    };
+    vi.mocked(callApi).mockImplementation(async (path: string) => {
+      if (path.startsWith("/v1/sales-funnel-campaigns/")) {
+        return { data: { salesFunnelCampaign: { id: "c1", brandId: "b1", offerId: "o1", salesFunnelId: "f", salesFunnelName: "Bliss", status: "ongoing", stopReason: null, createdAt: "", updatedAt: "", units: [{ campaignId: "u1", featureSlug: "x", legKey: "y", status: "ongoing" }] } } };
+      }
+      if (path.startsWith("/v1/public/channels")) return { data: { channels: [] } };
+      return { data: partStats };
     });
 
-    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as {
-      recipientStats: Record<string, unknown>;
-      emailStats: { stepStats: Array<Record<string, unknown>> };
+    const res = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as {
+      results: Array<{ recipientStats: Record<string, unknown>; emailStats: { stepStats: Array<Record<string, unknown>> } }>;
     };
+    const out = res.results[0]!;
 
-    expect(JSON.stringify(out)).not.toContain("opened");
+    expect(JSON.stringify(res)).not.toContain("opened");
     expect(out.recipientStats.sent).toBe(10);
     expect(out.recipientStats.clicked).toBe(1);
     expect(out.emailStats.stepStats[0]!.sent).toBe(10);
