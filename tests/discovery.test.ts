@@ -4,6 +4,7 @@ import type { Request } from "express";
 vi.mock("../src/lib/api-client.js", () => ({
   getConfigStatus: vi.fn(() => ({ configured: true, apiUrl: "https://api.distribute.you" })),
   callApi: vi.fn(),
+  headApi: vi.fn(async () => ({ status: 200, etag: null })),
   setApiKey: vi.fn(),
   getApiKey: vi.fn(() => "test-key"),
   isConfigured: vi.fn(() => true),

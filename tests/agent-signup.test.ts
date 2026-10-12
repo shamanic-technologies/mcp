@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../src/lib/api-client.js", () => ({
   getConfigStatus: vi.fn(() => ({ configured: true, apiUrl: "https://api.distribute.you" })),
   callApi: vi.fn(),
+  headApi: vi.fn(async () => ({ status: 200, etag: null })),
   getApiKey: vi.fn(() => "test-key"),
   isConfigured: vi.fn(() => true),
 }));
