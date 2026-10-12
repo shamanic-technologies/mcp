@@ -176,6 +176,235 @@
           },
           "$schema": "http://json-schema.org/draft-07/schema#"
         }
+      },
+      "distribute_list_leads": {
+        "description": "List the leads (prospects, people we found and contacted) of a brand, newest first, with where each one stands: contacted, sent, delivered, clicked, replied (and how the reply was classified), bounced, unsubscribed, with dates. Each lead carries an `id` to pass to distribute_get_lead for its emails and conversation. Pages with `cursor`: pass the `nextCursor` of the previous page. `total` is the brand's lead count. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_list_leads",
+          "definitions": {
+            "distribute_list_leads": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand whose leads to list (from distribute_status)."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                },
+                "campaignId": {
+                  "type": "string",
+                  "description": "Only leads of this campaign part (a lead's `campaignId`)."
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 200,
+                  "description": "Leads per page (default 50, max 200)."
+                },
+                "cursor": {
+                  "type": "string",
+                  "description": "The `nextCursor` of the previous page."
+                }
+              },
+              "required": [
+                "brandId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_list_emails": {
+        "description": "List the cold emails we wrote and sent for a brand: for each prospect, the first email and every follow-up (`subject`, then `sequence`: one entry per step with its `bodyText` and the days since the previous step), with who it went to (lead name, title, company, `leadId`) and when it was written. Use it to answer \"what did you send for my brand\". Whether each lead was actually sent, delivered or replied is on distribute_list_leads / distribute_get_lead. Pages with `limit` and `offset`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_list_emails",
+          "definitions": {
+            "distribute_list_emails": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand whose emails to list (from distribute_status)."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                },
+                "campaignId": {
+                  "type": "string",
+                  "description": "Only the emails of this campaign part."
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "Emails per page (default 20, max 100)."
+                },
+                "offset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "How many to skip (pagination)."
+                }
+              },
+              "required": [
+                "brandId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_get_lead": {
+        "description": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body), and the conversation (every message we sent and every reply they wrote, oldest first). Take `lead_id` from distribute_list_leads (`id`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_get_lead",
+          "definitions": {
+            "distribute_get_lead": {
+              "type": "object",
+              "properties": {
+                "lead_id": {
+                  "type": "string",
+                  "description": "The lead's `id`, from distribute_list_leads."
+                },
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                }
+              },
+              "required": [
+                "lead_id"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_find_api": {
+        "description": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns, budgets, offers, audiences, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"change the daily budget\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_find_api",
+          "definitions": {
+            "distribute_find_api": {
+              "type": "object",
+              "properties": {
+                "query": {
+                  "type": "string",
+                  "description": "What you want to do, in plain words."
+                },
+                "area": {
+                  "type": "string",
+                  "description": "Restrict to one area (as listed with no query), e.g. Leads, Emails, Billing."
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 50,
+                  "description": "How many matches (default 10)."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_describe_api": {
+        "description": "Read one distribute.you API operation in full before calling it: what it does, its path and query parameters (required or not), and the JSON body it takes. Name it by `operationId`, or by `method` and `path`, as distribute_find_api returned them.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_describe_api",
+          "definitions": {
+            "distribute_describe_api": {
+              "type": "object",
+              "properties": {
+                "operationId": {
+                  "type": "string",
+                  "description": "Operation id from distribute_find_api."
+                },
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "PATCH",
+                    "DELETE"
+                  ]
+                },
+                "path": {
+                  "type": "string",
+                  "description": "Path template (/v1/leads/{id}) or a concrete path."
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_call_api": {
+        "description": "Call any distribute.you API operation with your key, exactly as the API would answer it (same scope, same refusals). Use it for anything the other tools do not cover; find the operation with distribute_find_api first. `path` is the concrete path with its ids filled in (/v1/leads/123/timeline); query parameters go in `query`, a JSON body in `body`. Writes (POST, PUT, PATCH, DELETE) change the account for real: say what you are about to change before calling. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_call_api",
+          "definitions": {
+            "distribute_call_api": {
+              "type": "object",
+              "properties": {
+                "method": {
+                  "type": "string",
+                  "enum": [
+                    "GET",
+                    "POST",
+                    "PUT",
+                    "PATCH",
+                    "DELETE"
+                  ],
+                  "description": "HTTP method of the operation."
+                },
+                "path": {
+                  "type": "string",
+                  "description": "Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."
+                },
+                "query": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ]
+                  },
+                  "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}."
+                },
+                "body": {
+                  "description": "JSON body for POST, PUT and PATCH."
+                },
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                }
+              },
+              "required": [
+                "method",
+                "path"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
       }
     }
   },
@@ -632,6 +861,445 @@
                     "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                   }
                 },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_list_leads": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "List the leads (prospects, people we found and contacted) of a brand, newest first, with where each one stands: contacted, sent, delivered, clicked, replied (and how the reply was classified), bounced, unsubscribed, with dates. Each lead carries an `id` to pass to distribute_get_lead for its emails and conversation. Pages with `cursor`: pass the `nextCursor` of the previous page. `total` is the brand's lead count. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_list_leads. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_leads\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand whose leads to list (from distribute_status)."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  },
+                  "campaignId": {
+                    "type": "string",
+                    "description": "Only leads of this campaign part (a lead's `campaignId`)."
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 200,
+                    "description": "Leads per page (default 50, max 200)."
+                  },
+                  "cursor": {
+                    "type": "string",
+                    "description": "The `nextCursor` of the previous page."
+                  }
+                },
+                "required": [
+                  "brandId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_list_emails": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "List the cold emails we wrote and sent for a brand: for each prospect, the first email and every follow-up (`subject`, then `sequence`: one entry per step with its `bodyText` and the days since the previous step), with who it went to (lead name, title, company, `leadId`) and when it was written. Use it to answer \"what did you send for my brand\". Whether each lead was actually sent, delivered or replied is on distribute_list_leads / distribute_get_lead. Pages with `limit` and `offset`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_list_emails. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_emails\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand whose emails to list (from distribute_status)."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  },
+                  "campaignId": {
+                    "type": "string",
+                    "description": "Only the emails of this campaign part."
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "Emails per page (default 20, max 100)."
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "How many to skip (pagination)."
+                  }
+                },
+                "required": [
+                  "brandId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_get_lead": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body), and the conversation (every message we sent and every reply they wrote, oldest first). Take `lead_id` from distribute_list_leads (`id`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_get_lead. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_get_lead\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "lead_id": {
+                    "type": "string",
+                    "description": "The lead's `id`, from distribute_list_leads."
+                  },
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  }
+                },
+                "required": [
+                  "lead_id"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_find_api": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns, budgets, offers, audiences, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"change the daily budget\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has.",
+        "description": "MCP Tool: distribute_find_api. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_find_api\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string",
+                    "description": "What you want to do, in plain words."
+                  },
+                  "area": {
+                    "type": "string",
+                    "description": "Restrict to one area (as listed with no query), e.g. Leads, Emails, Billing."
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50,
+                    "description": "How many matches (default 10)."
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_describe_api": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Read one distribute.you API operation in full before calling it: what it does, its path and query parameters (required or not), and the JSON body it takes. Name it by `operationId`, or by `method` and `path`, as distribute_find_api returned them.",
+        "description": "MCP Tool: distribute_describe_api. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_describe_api\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "operationId": {
+                    "type": "string",
+                    "description": "Operation id from distribute_find_api."
+                  },
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE"
+                    ]
+                  },
+                  "path": {
+                    "type": "string",
+                    "description": "Path template (/v1/leads/{id}) or a concrete path."
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_call_api": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Call any distribute.you API operation with your key, exactly as the API would answer it (same scope, same refusals). Use it for anything the other tools do not cover; find the operation with distribute_find_api first. `path` is the concrete path with its ids filled in (/v1/leads/123/timeline); query parameters go in `query`, a JSON body in `body`. Writes (POST, PUT, PATCH, DELETE) change the account for real: say what you are about to change before calling. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_call_api. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_call_api\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "enum": [
+                      "GET",
+                      "POST",
+                      "PUT",
+                      "PATCH",
+                      "DELETE"
+                    ],
+                    "description": "HTTP method of the operation."
+                  },
+                  "path": {
+                    "type": "string",
+                    "description": "Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."
+                  },
+                  "query": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ]
+                    },
+                    "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}."
+                  },
+                  "body": {
+                    "description": "JSON body for POST, PUT and PATCH."
+                  },
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  }
+                },
+                "required": [
+                  "method",
+                  "path"
+                ],
                 "additionalProperties": false
               }
             }

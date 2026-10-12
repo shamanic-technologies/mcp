@@ -1,5 +1,16 @@
 import { z } from "zod";
 import { getConfigStatus, callApi, type ApiErrorBody } from "../lib/api-client.js";
+import { forCustomer, withoutFields, OPEN_FIELDS } from "../lib/redact.js";
+import {
+  getCatalog,
+  searchOperations,
+  findOperation,
+  matchPath,
+  resolveSchema,
+  isPlatformInternal,
+  PLATFORM_INTERNAL_PATHS,
+  type HttpMethod,
+} from "../lib/gateway-catalog.js";
 
 /**
  * A distribute.you key belongs to its USER, across every organization that user
@@ -48,22 +59,25 @@ function failWith(result: { error?: string; errorBody?: ApiErrorBody }): never {
 }
 
 /**
- * The tools mirror what the CUSTOMER dashboard lets a person do, and nothing more.
+ * Same scope as the API (owner 2026-10-12): whatever a key can do on the public
+ * gateway, it can do from here, and nothing more. Two layers:
  *
- * A customer funds a sales funnel and chooses audiences; they do not operate
- * campaigns. Creating and stopping one is a STAFF action in the admin console —
- * the customer dashboard has exactly one campaign write in the whole app, at the
- * end of onboarding, right after payment. `create_campaign` and `stop_campaign`
- * used to be exposed here, which handed a customer over the API the affordance
- * the product deliberately does not give them in the UI.
+ * - CURATED tools for the frequent jobs (status, brands, campaigns and their
+ *   results, leads, the emails we wrote and sent, one lead's conversation). They
+ *   read, and shape the answer for an assistant.
+ * - GENERIC tools over the gateway's own served catalogue (`distribute_find_api`,
+ *   `distribute_describe_api`, `distribute_call_api`), so every customer route,
+ *   writes included, is reachable without a tool written for it, and a route the
+ *   gateway adds is reachable the day it ships. The gateway decides what the key
+ *   may read or write; this server neither widens nor narrows it, except that our
+ *   own internals (prompts, models, generation costs, the service registry) never
+ *   leave through it.
  *
- * `create_campaign` could not have produced a working campaign anyway: onboarding
- * funds a funnel in billing and activates the chosen audiences around that call,
- * and a tool doing neither lands a campaign with no money and no audience — the
- * half-state the dashboard's own blocker exists to catch.
- *
- * So: read everything, write nothing. Adding a write here means the customer
- * dashboard grew one first.
+ * No curated tool creates or stops a campaign: the dashboard's only campaign
+ * write sits at the end of onboarding, where billing is funded around it, and a
+ * one-click tool for it would land a campaign with no money and no audience. A
+ * customer who wants that route can still reach it through distribute_call_api,
+ * exactly as through the API.
  */
 // Tool definitions with Zod schemas
 export const toolDefinitions = {
@@ -127,6 +141,86 @@ export const toolDefinitions = {
       ...targetShape,
     }),
   },
+  distribute_list_leads: {
+    description:
+      "List the leads (prospects, people we found and contacted) of a brand, newest first, with where each one stands: " +
+      "contacted, sent, delivered, clicked, replied (and how the reply was classified), bounced, unsubscribed, with dates. " +
+      "Each lead carries an `id` to pass to distribute_get_lead for its emails and conversation. " +
+      "Pages with `cursor`: pass the `nextCursor` of the previous page. `total` is the brand's lead count. " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand whose leads to list (from distribute_status)."),
+      campaignId: z.string().optional().describe("Only leads of this campaign part (a lead's `campaignId`)."),
+      limit: z.number().int().min(1).max(200).optional().describe("Leads per page (default 50, max 200)."),
+      cursor: z.string().optional().describe("The `nextCursor` of the previous page."),
+    }),
+  },
+  distribute_list_emails: {
+    description:
+      "List the cold emails we wrote and sent for a brand: for each prospect, the first email and every follow-up " +
+      "(`subject`, then `sequence`: one entry per step with its `bodyText` and the days since the previous step), with who it went to " +
+      "(lead name, title, company, `leadId`) and when it was written. Use it to answer \"what did you send for my brand\". " +
+      "Whether each lead was actually sent, delivered or replied is on distribute_list_leads / distribute_get_lead. " +
+      "Pages with `limit` and `offset`. " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand whose emails to list (from distribute_status)."),
+      campaignId: z.string().optional().describe("Only the emails of this campaign part."),
+      limit: z.number().int().min(1).max(100).optional().describe("Emails per page (default 20, max 100)."),
+      offset: z.number().int().min(0).optional().describe("How many to skip (pagination)."),
+    }),
+  },
+  distribute_get_lead: {
+    description:
+      "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them " +
+      "(first email and follow-ups, subject and body), and the conversation (every message we sent and every reply they wrote, oldest first). " +
+      "Take `lead_id` from distribute_list_leads (`id`). " +
+      TARGET_HINT,
+    schema: z.object({
+      lead_id: z.string().describe("The lead's `id`, from distribute_list_leads."),
+      ...targetShape,
+    }),
+  },
+  distribute_find_api: {
+    description:
+      "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API " +
+      "(the same API and the same scope your key has: leads, emails, conversations, campaigns, budgets, offers, audiences, billing, CRM, stats...) " +
+      "by what you want to do, in plain words (\"list the emails sent for my brand\", \"change the daily budget\", \"account balance\"). " +
+      "Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details " +
+      "and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has.",
+    schema: z.object({
+      query: z.string().optional().describe("What you want to do, in plain words."),
+      area: z.string().optional().describe("Restrict to one area (as listed with no query), e.g. Leads, Emails, Billing."),
+      limit: z.number().int().min(1).max(50).optional().describe("How many matches (default 10)."),
+    }),
+  },
+  distribute_describe_api: {
+    description:
+      "Read one distribute.you API operation in full before calling it: what it does, its path and query parameters (required or not), " +
+      "and the JSON body it takes. Name it by `operationId`, or by `method` and `path`, as distribute_find_api returned them.",
+    schema: z.object({
+      operationId: z.string().optional().describe("Operation id from distribute_find_api."),
+      method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
+      path: z.string().optional().describe("Path template (/v1/leads/{id}) or a concrete path."),
+    }),
+  },
+  distribute_call_api: {
+    description:
+      "Call any distribute.you API operation with your key, exactly as the API would answer it (same scope, same refusals). " +
+      "Use it for anything the other tools do not cover; find the operation with distribute_find_api first. " +
+      "`path` is the concrete path with its ids filled in (/v1/leads/123/timeline); query parameters go in `query`, a JSON body in `body`. " +
+      "Writes (POST, PUT, PATCH, DELETE) change the account for real: say what you are about to change before calling. " +
+      TARGET_HINT,
+    schema: z.object({
+      method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).describe("HTTP method of the operation."),
+      path: z.string().describe("Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."),
+      query: z.record(z.union([z.string(), z.number(), z.boolean()])).optional().describe("Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}."),
+      body: z.unknown().optional().describe("JSON body for POST, PUT and PATCH."),
+      ...targetShape,
+    }),
+  },
 };
 // Tool handlers
 export async function handleToolCall(
@@ -151,6 +245,24 @@ export async function handleToolCall(
 
     case "distribute_suggest_icp":
       return handleSuggestIcp(args);
+
+    case "distribute_list_leads":
+      return handleListLeads(args);
+
+    case "distribute_list_emails":
+      return handleListEmails(args);
+
+    case "distribute_get_lead":
+      return handleGetLead(args);
+
+    case "distribute_find_api":
+      return handleFindApi(args);
+
+    case "distribute_describe_api":
+      return handleDescribeApi(args);
+
+    case "distribute_call_api":
+      return handleCallApi(args);
 
     default:
       throw new Error(`Unknown tool: ${name}`);
@@ -572,15 +684,7 @@ function failureDetailsOf(raw: Record<string, unknown>) {
  * `recipientStats`, `emailStats`, and once per entry of `emailStats.stepStats`.
  */
 function withoutOpens(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(withoutOpens);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>)
-        .filter(([k]) => k !== "opened" && k !== "openRate" && k !== "opens")
-        .map(([k, v]) => [k, withoutOpens(v)]),
-    );
-  }
-  return value;
+  return withoutFields(value, OPEN_FIELDS);
 }
 
 async function handleListBrands(args: Record<string, unknown>) {
@@ -640,4 +744,273 @@ function hostnameOf(url: string): string | null {
   } catch {
     return null;
   }
+}
+
+// ── Leads, emails, one lead's conversation ─────────────────────────────────
+
+/** Top-level lead fields that are our plumbing or a duplicate of the `person` summary. */
+const LEAD_ROW_PLUMBING = new Set(["lead", "global", "sources", "statusDetails", "parentRunId", "runId", "orgId", "userId", "namespace", "apolloPersonId"]);
+
+/**
+ * A lead row as an assistant reads it: where the person stands (every status
+ * field the API serves, including ones added later, passes through) and who
+ * they are in a few fields. The full enrichment record stays on GET /v1/leads/{id}.
+ */
+function leadForAssistant(row: Record<string, unknown>) {
+  const lead = (row.lead ?? null) as Record<string, unknown> | null;
+  const org = (lead?.organization ?? null) as Record<string, unknown> | null;
+  const rest = Object.fromEntries(Object.entries(row).filter(([k]) => !LEAD_ROW_PLUMBING.has(k)));
+  return forCustomer({
+    id: row.id,
+    email: row.email,
+    person: lead
+      ? {
+          name: lead.name ?? null,
+          title: lead.currentTitle ?? null,
+          headline: lead.headline ?? null,
+          linkedinUrl: lead.linkedinUrl ?? null,
+          city: lead.city ?? null,
+          country: lead.country ?? null,
+          company: org
+            ? { name: org.name ?? null, domain: org.primaryDomain ?? null, industry: org.industry ?? null, employees: org.estimatedNumEmployees ?? null }
+            : null,
+        }
+      : null,
+    ...rest,
+  });
+}
+
+/** Fields of a written email that are our plumbing (the HTML twin of `bodyText` included: same words, many more tokens). */
+const EMAIL_PLUMBING = new Set(["bodyHtml", "runId", "generationRunId", "apolloEnrichmentId", "idempotencyKey", "orgId"]);
+
+/**
+ * One written email as an assistant reads it: subject, the steps with their
+ * text, who it was for. Internals (prompt, model, tokens, generation costs) are
+ * stripped by `forCustomer`; any other field the API adds later (a send status)
+ * passes through.
+ */
+function emailForAssistant(email: Record<string, unknown>) {
+  return forCustomer(withoutFields(email, EMAIL_PLUMBING));
+}
+
+async function handleListLeads(args: Record<string, unknown>) {
+  const params = new URLSearchParams({ brandId: String(args.brandId) });
+  if (args.campaignId) params.set("campaignId", String(args.campaignId));
+  params.set("limit", String(args.limit ?? 50));
+  if (args.cursor) params.set("cursor", String(args.cursor));
+  const result = await callApi<{ leads: Array<Record<string, unknown>>; nextCursor?: string | null; total?: number }>(
+    withTarget(`/v1/leads?${params}`, { orgId: args.orgId }),
+  );
+  if (result.error) failWith(result);
+  const data = result.data as { leads: Array<Record<string, unknown>>; nextCursor?: string | null; total?: number };
+  return {
+    total: data.total ?? null,
+    count: data.leads.length,
+    nextCursor: data.nextCursor ?? null,
+    leads: data.leads.map(leadForAssistant),
+  };
+}
+
+async function handleListEmails(args: Record<string, unknown>) {
+  const params = new URLSearchParams({ brandId: String(args.brandId) });
+  if (args.campaignId) params.set("campaignId", String(args.campaignId));
+  const limit = Number(args.limit ?? 20);
+  const offset = Number(args.offset ?? 0);
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+  const result = await callApi<{ emails: Array<Record<string, unknown>> }>(withTarget(`/v1/emails?${params}`, { orgId: args.orgId }));
+  if (result.error) failWith(result);
+  const emails = (result.data as { emails: Array<Record<string, unknown>> }).emails;
+  return {
+    count: emails.length,
+    // A full page means there may be more: ask again from the next offset.
+    nextOffset: emails.length === limit ? offset + limit : null,
+    emails: emails.map(emailForAssistant),
+  };
+}
+
+async function handleGetLead(args: Record<string, unknown>) {
+  const id = encodeURIComponent(String(args.lead_id));
+  const one = await callApi<{ leadDetail: Record<string, unknown> }>(withTarget(`/v1/leads/${id}`, args));
+  if (one.error) {
+    if (one.status === 404) throw new Error(`No lead ${String(args.lead_id)} here. Take the lead id from distribute_list_leads (\`id\`). ${TARGET_HINT}`);
+    failWith(one);
+  }
+  const row = (one.data as { leadDetail: Record<string, unknown> }).leadDetail;
+  const campaignId = typeof row.campaignId === "string" ? row.campaignId : null;
+  const leadId = typeof row.leadId === "string" ? row.leadId : null;
+  const email = typeof row.email === "string" ? row.email : null;
+  const brandIds = Array.isArray(row.brandIds) ? (row.brandIds as string[]) : [];
+  const brandId = (typeof args.brandId === "string" && args.brandId) || brandIds[0] || null;
+
+  // The two reads are independent, and a refusal of one must not hide the other:
+  // each is reported in place, the refusal body whole.
+  const [written, conversation] = await Promise.all([
+    leadId
+      ? callApi<{ generation: Record<string, unknown> | null }>(
+          withTarget(
+            `/v1/emails/by-lead/${encodeURIComponent(leadId)}?${new URLSearchParams({
+              ...(brandId ? { brandId } : {}),
+              ...(campaignId ? { campaignId } : {}),
+            })}`,
+            { orgId: args.orgId },
+          ),
+        )
+      : Promise.resolve({ error: "This lead carries no leadId", status: undefined, errorBody: undefined, data: undefined }),
+    campaignId && email
+      ? callApi<{ conversation?: Record<string, unknown> }>(
+          withTarget(`/v1/conversations?${new URLSearchParams({ campaign_id: campaignId, email })}`, {
+            orgId: args.orgId,
+            ...(brandId ? { brandId } : {}),
+          }),
+        )
+      : Promise.resolve({ error: "This lead carries no campaign or email address", status: undefined, errorBody: undefined, data: undefined }),
+  ]);
+
+  const generation = written.error ? null : ((written.data as { generation: Record<string, unknown> | null }).generation ?? null);
+  return {
+    lead: leadForAssistant(row),
+    emailsWritten: generation ? emailForAssistant(generation) : null,
+    ...(written.error ? { emailsWrittenUnavailable: written.errorBody ?? { error: written.error, status: written.status ?? null } } : {}),
+    conversation: conversation.error ? null : forCustomer((conversation.data as { conversation?: unknown }).conversation ?? conversation.data),
+    ...(conversation.error
+      ? { conversationUnavailable: conversation.errorBody ?? { error: conversation.error, status: conversation.status ?? null } }
+      : {}),
+  };
+}
+
+// ── The whole API, by intent ─────────────────────────────────────────────────
+
+async function handleFindApi(args: Record<string, unknown>) {
+  const { operations } = await getCatalog();
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  const area = typeof args.area === "string" && args.area ? args.area : undefined;
+  if (!query) {
+    const counts = new Map<string, number>();
+    for (const op of operations) {
+      if (area && (op.tag ?? "").toLowerCase() !== area.toLowerCase()) continue;
+      counts.set(op.tag ?? "Other", (counts.get(op.tag ?? "Other") ?? 0) + 1);
+    }
+    if (area) {
+      return {
+        area,
+        operations: operations
+          .filter((o) => (o.tag ?? "").toLowerCase() === area.toLowerCase())
+          .map((o) => ({ operationId: o.operationId, method: o.method, path: o.path, summary: o.summary })),
+      };
+    }
+    return {
+      totalOperations: operations.length,
+      areas: [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([name, count]) => ({ area: name, operations: count })),
+      next: "Ask again with a query in plain words, or with an area to list its operations.",
+    };
+  }
+  const matches = searchOperations(operations, query, Number(args.limit ?? 10), area);
+  return {
+    query,
+    matches,
+    next:
+      matches.length === 0
+        ? "Nothing matched. Try other words, or call with no query to see the areas of the API."
+        : "Call distribute_describe_api with an operationId for its parameters and body, then distribute_call_api to run it.",
+  };
+}
+
+async function handleDescribeApi(args: Record<string, unknown>) {
+  const { operations, components } = await getCatalog();
+  const op = findOperation(operations, {
+    operationId: typeof args.operationId === "string" ? args.operationId : undefined,
+    method: typeof args.method === "string" ? args.method : undefined,
+    path: typeof args.path === "string" ? args.path.split("?")[0] : undefined,
+  });
+  if (!op) {
+    throw new Error("No such operation. Name it by operationId, or by method and path, as distribute_find_api returned them.");
+  }
+  return {
+    operationId: op.operationId,
+    method: op.method,
+    path: op.path,
+    area: op.tag,
+    summary: op.summary,
+    description: op.description,
+    deprecated: op.deprecated,
+    parameters: op.params,
+    body: op.hasBody ? resolveSchema(op.bodySchema, components) : null,
+    howToCall: {
+      tool: "distribute_call_api",
+      method: op.method,
+      path: `${op.path}  (fill each {param} with its value)`,
+      targeting: TARGET_HINT,
+    },
+  };
+}
+
+/** Above this, a response is not handed back whole: an assistant's context is not a file system. */
+export const MAX_RESULT_CHARS = 200_000;
+
+async function handleCallApi(args: Record<string, unknown>) {
+  const method = String(args.method).toUpperCase() as HttpMethod;
+  const rawPath = String(args.path ?? "").trim();
+  if (!rawPath.startsWith("/")) throw new Error(`path must start with "/" (got: ${rawPath || "nothing"}), e.g. /v1/emails`);
+  const [pathOnly, inlineQuery] = rawPath.split("?", 2) as [string, string | undefined];
+  if (pathOnly.includes("..")) throw new Error("path may not contain '..'");
+
+  // A path this server will not carry, whatever the gateway answers: our internals.
+  if (isPlatformInternal(pathOnly)) {
+    throw new Error(`${pathOnly} is not available through this server (${PLATFORM_INTERNAL_PATHS.join(", ")} are distribute.you internals).`);
+  }
+
+  // Only operations of the gateway's served customer catalogue. A staff route is
+  // absent from it, so it cannot be reached through here.
+  const { operations } = await getCatalog();
+  const match = matchPath(operations, method, pathOnly);
+  if (!match) {
+    const near = searchOperations(operations, pathOnly.replace(/[/{}-]/g, " "), 5);
+    throw new Error(
+      JSON.stringify({
+        error: `${method} ${pathOnly} is not an operation of the distribute.you API.`,
+        didYouMean: near.map((h) => `${h.method} ${h.path}`),
+        fix: "Find the operation with distribute_find_api.",
+      }),
+    );
+  }
+  if (!match.operation) {
+    throw new Error(
+      JSON.stringify({
+        error: `${pathOnly} exists, but not with ${method}.`,
+        methods: match.otherMethods,
+      }),
+    );
+  }
+
+  const params = new URLSearchParams(inlineQuery ?? "");
+  const query = (args.query ?? {}) as Record<string, string | number | boolean>;
+  for (const [k, v] of Object.entries(query)) params.set(k, String(v));
+  if (typeof args.brandId === "string" && args.brandId && !params.has("brandId") && !pathOnly.includes(args.brandId)) {
+    params.set("brandId", args.brandId);
+  }
+  if (typeof args.orgId === "string" && args.orgId && !params.has("orgId")) params.set("orgId", args.orgId);
+  const qs = params.toString();
+
+  const result = await callApi<unknown>(`${pathOnly}${qs ? `?${qs}` : ""}`, {
+    method,
+    body: method === "GET" || method === "DELETE" ? undefined : (args.body ?? {}),
+  });
+  if (result.error) {
+    throw new Error(JSON.stringify({ status: result.status ?? null, ...(result.errorBody ?? { error: result.error }) }));
+  }
+
+  const data = forCustomer(result.data);
+  const text = JSON.stringify(data);
+  if (text.length > MAX_RESULT_CHARS) {
+    return {
+      operation: `${match.operation.method} ${match.operation.path}`,
+      status: result.status ?? null,
+      truncated: true,
+      sizeChars: text.length,
+      fix: "The answer is too large to hand back whole. Ask for fewer rows (limit / offset / cursor, see distribute_describe_api).",
+      preview: text.slice(0, 20_000),
+    };
+  }
+  return { operation: `${match.operation.method} ${match.operation.path}`, status: result.status ?? null, data };
 }

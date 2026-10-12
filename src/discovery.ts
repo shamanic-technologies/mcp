@@ -58,10 +58,10 @@ export function discoveryDocument(req: Request): McpDiscoveryDocument {
     name: SERVER_NAME,
     version: SERVER_VERSION,
     description:
-      "Run cold email acquisition for a brand: list brands and campaigns, read campaign " +
-      "performance, inspect the workflows behind a campaign, and draft an ideal customer " +
-      "profile from a website. Every call is scoped to the organisation that owns the " +
-      "Bearer key it is made with.",
+      "Everything the distribute.you API lets your key do, from an AI assistant: brands, " +
+      "campaigns and their results, leads, the emails written and sent with every follow-up, " +
+      "each prospect's conversation, and every other API operation, found by intent. Every " +
+      "call carries the Bearer key it is made with, and the API decides what that key may do.",
     transport: "streamable-http",
     endpoint: `${origin}/mcp`,
     authentication: {

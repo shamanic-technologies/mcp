@@ -6,7 +6,7 @@ import cors from "cors";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { toolDefinitions, handleToolCall } from "./tools/index.js";
-import { setApiKey } from "./lib/api-client.js";
+import { runWithApiKey } from "./lib/api-client.js";
 import { discoveryDocument, notFoundDocument, SERVER_NAME, SERVER_VERSION } from "./discovery.js";
 
 const PORT = process.env.PORT || 3000;
@@ -97,13 +97,10 @@ app.post("/mcp", async (req: Request, res: Response) => {
           def.description,
           def.schema.shape,
           async (args: Record<string, unknown>) => {
-            // Set the API key for this request context
+            // The call runs under THIS session's key, bound to its own async
+            // context: concurrent sessions never see each other's key.
             const session = sessions.get(sessionId!);
-            if (session?.apiKey) {
-              setApiKey(session.apiKey);
-            }
-            
-            const result = await handleToolCall(name, args);
+            const result = await runWithApiKey(session?.apiKey ?? null, () => handleToolCall(name, args));
             return {
               content: [
                 {
@@ -137,11 +134,6 @@ app.post("/mcp", async (req: Request, res: Response) => {
     } else if (apiKey) {
       // Update API key if provided in subsequent requests
       sessionData.apiKey = apiKey;
-    }
-
-    // Set API key for this request
-    if (sessionData.apiKey) {
-      setApiKey(sessionData.apiKey);
     }
 
     // Set session header (sessionId is always defined at this point)
@@ -182,11 +174,6 @@ app.get("/mcp", async (req: Request, res: Response) => {
       error: { code: -32600, message: "Session not found" },
       id: null,
     });
-  }
-
-  // Set API key for this request context
-  if (sessionData.apiKey) {
-    setApiKey(sessionData.apiKey);
   }
 
   await sessionData.transport.handleRequest(req, res);

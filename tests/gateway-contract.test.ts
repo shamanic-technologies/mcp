@@ -65,17 +65,16 @@ describe("only tools the gateway can actually serve", () => {
 });
 
 /**
- * The tools mirror what the CUSTOMER dashboard lets a person do. A customer funds
- * a sales funnel and picks audiences; operating a campaign is a staff action in
- * the admin console, and the customer dashboard has exactly one campaign write in
- * the whole app — at the end of onboarding, right after payment.
+ * The CURATED tools read. A customer funds a sales funnel and picks audiences;
+ * the customer dashboard has exactly one campaign write, at the end of
+ * onboarding, where billing is funded around it. A one-click tool that creates a
+ * campaign would land one with no money and no audience.
  *
- * So this server writes NOTHING. `create_campaign` could not have worked anyway:
- * onboarding funds a funnel in billing and activates the chosen audiences around
- * that call, and a tool doing neither lands a campaign with no money and no
- * audience.
+ * Writes the API allows a key are still reachable (owner 2026-10-12: same scope
+ * as the API), through the generic distribute_call_api only, which carries no
+ * hard-coded verb: the caller names the operation, the gateway decides.
  */
-describe("the customer surface is read-only", () => {
+describe("the curated tools are read-only", () => {
   it("exposes no tool that creates or stops a campaign", () => {
     expect(toolDefinitions).not.toHaveProperty("distribute_create_campaign");
     expect(toolDefinitions).not.toHaveProperty("distribute_stop_campaign");
