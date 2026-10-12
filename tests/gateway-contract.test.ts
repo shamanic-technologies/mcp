@@ -82,11 +82,15 @@ describe("the curated tools are read-only", () => {
 
   it("calls the gateway with no mutating verb", () => {
     const src = read("src/tools/index.ts");
-    // The one POST left reads: an ICP suggestion computes an answer and stores
-    // nothing on the account.
+    // The POSTs left: an ICP suggestion (computes an answer, stores nothing),
+    // and the agent's own onboarding (owner 2026-10-12): signup start/complete
+    // and the prepaid checkout, which returns a payment page and moves no money.
     const posts = src.match(/method: "(POST|PUT|PATCH|DELETE)"/g) ?? [];
-    expect(posts).toEqual(['method: "POST"']);
+    expect(posts).toEqual(['method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"']);
     expect(src).toContain("/icp/suggest");
+    expect(src).toContain('"/v1/agent-signups/start"');
+    expect(src).toContain('"/v1/agent-signups/complete"');
+    expect(src).toContain('"/v1/billing/accounts/prepaid_checkout"');
     expect(src).not.toContain("/v1/campaigns\", {");
   });
 

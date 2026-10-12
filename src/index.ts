@@ -5,7 +5,7 @@ import express, { Request, Response, Express } from "express";
 import cors from "cors";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { toolDefinitions, handleToolCall } from "./tools/index.js";
+import { toolDefinitions, handleToolCall, mintedKey } from "./tools/index.js";
 import { runWithApiKey } from "./lib/api-client.js";
 import { discoveryDocument, notFoundDocument, SERVER_NAME, SERVER_VERSION } from "./discovery.js";
 
@@ -101,6 +101,11 @@ app.post("/mcp", async (req: Request, res: Response) => {
             // context: concurrent sessions never see each other's key.
             const session = sessions.get(sessionId!);
             const result = await runWithApiKey(session?.apiKey ?? null, () => handleToolCall(name, args), name);
+            // An agent that signed up through this session keeps working in it:
+            // a session with no key adopts the key it just minted. A session that
+            // already has one keeps it (the agent reconnects to switch).
+            const minted = mintedKey(name, result);
+            if (minted && session && !session.apiKey) session.apiKey = minted;
             return {
               content: [
                 {
