@@ -30,7 +30,19 @@ describe("each call goes out under its own session's key", () => {
 
   it("sends nothing when the call carries no key", async () => {
     const res = await runWithApiKey(null, () => callApi("/v1/me"));
-    expect(res.error).toMatch(/API key not provided/);
+    expect(res.error).toMatch(/no distribute.you API key/);
+    expect(res.errorBody?.fix).toMatch(/distribute_signup_start/);
+  });
+
+  it("calls a public route (agent signup) with no key, even from a keyed session", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    await runWithApiKey(null, () => callApi("/v1/agent-signups/start", { method: "POST", body: {}, public: true }));
+    await runWithApiKey("key-A", () => callApi("/v1/agent-signups/complete", { method: "POST", body: {}, public: true }));
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    for (const call of fetchSpy.mock.calls) {
+      expect((call[1]!.headers as Record<string, string>).Authorization).toBeUndefined();
+    }
+    fetchSpy.mockRestore();
   });
 
   it("marks every gateway call as MCP traffic, named by the tool it serves", async () => {

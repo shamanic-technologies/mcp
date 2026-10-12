@@ -61,14 +61,17 @@ export function discoveryDocument(req: Request): McpDiscoveryDocument {
       "Everything the distribute.you API lets your key do, from an AI assistant: brands, " +
       "campaigns and their results, leads, the emails written and sent with every follow-up, " +
       "each prospect's conversation, and every other API operation, found by intent. Every " +
-      "call carries the Bearer key it is made with, and the API decides what that key may do.",
+      "call carries the Bearer key it is made with, and the API decides what that key may do. " +
+      "No human needed: request a key with an email, prepay when you need to spend.",
     transport: "streamable-http",
     endpoint: `${origin}/mcp`,
     authentication: {
       type: "bearer",
       description:
-        "Send an API key created in the distribute.you dashboard as `Authorization: Bearer " +
-        "<key>`. The key carries organisation and user identity; no other header is needed.",
+        "Send an API key as `Authorization: Bearer <key>`. The key carries organisation and " +
+        "user identity; no other header is needed. No human needed to get one: connect with no " +
+        "key, call distribute_signup_start (email + phone) then distribute_signup_complete (the " +
+        "emailed code) to receive a key, and distribute_prepay when you need to spend.",
     },
     documentation: DOCS_URL,
     openapi: OPENAPI_URL,

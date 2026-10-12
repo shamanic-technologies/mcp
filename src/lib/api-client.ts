@@ -68,6 +68,15 @@ export function getApiKey(): string | null {
   return callContext.getStore()?.key ?? null;
 }
 
+/**
+ * What a tool called with no key says. An agent with no key can get one itself,
+ * no human needed, so the refusal names the two tools that do it.
+ */
+export const NO_KEY_MESSAGE = "This session has no distribute.you API key.";
+export const NO_KEY_FIX =
+  "No human needed: call distribute_signup_start with an email and a phone, then distribute_signup_complete with the code emailed. " +
+  "It returns an API key and this session uses it right away. An existing key goes in the header `Authorization: Bearer <key>`.";
+
 /** Header values are ASCII, one line, at most 200 chars (what the gateway keeps). */
 function headerSafe(value: string): string {
   return value.replace(/[^\x20-\x7E]/g, "?").slice(0, 200);
@@ -81,14 +90,24 @@ export async function callApi<T>(
     apiKey?: string;
     /** Overrides the call context's tool name, e.g. to add the operation a generic call runs. */
     mcpTool?: string;
+    /**
+     * A public gateway route (agent signup) is called with NO key, even when the
+     * session has one: the route takes none, and a key sent to it would only
+     * tie an anonymous signup to whoever's session it ran in.
+     */
+    public?: boolean;
   } = {}
 ): Promise<ApiResponse<T>> {
   const { method = "GET", body, apiKey } = options;
   const tool = options.mcpTool ?? callContext.getStore()?.tool ?? null;
-  const key = apiKey || getApiKey();
+  const key = options.public ? null : apiKey || getApiKey();
 
-  if (!key) {
-    return { error: "API key not provided. Include your API key in the Authorization header." };
+  if (!key && !options.public) {
+    return {
+      error: NO_KEY_MESSAGE,
+      errorBody: { error: "api_key_required", code: "api_key_required", message: NO_KEY_MESSAGE, fix: NO_KEY_FIX },
+      status: 401,
+    };
   }
 
   try {
@@ -98,7 +117,7 @@ export async function callApi<T>(
         "Content-Type": "application/json",
         ...MCP_CLIENT_HEADERS,
         ...(tool ? { [MCP_TOOL_HEADER]: headerSafe(tool) } : {}),
-        Authorization: `Bearer ${key}`,
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });

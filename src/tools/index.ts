@@ -51,12 +51,49 @@ function withTarget(path: string, args: Record<string, unknown>): string {
  * brand_in_several_orgs, org_not_member, ...) is serialized whole, so the client
  * reads `code`, `message`, `fix` and `organizations` rather than a bare word.
  */
-function failWith(result: { error?: string; errorBody?: ApiErrorBody }): never {
+function failWith(result: { error?: string; errorBody?: ApiErrorBody; status?: number }): never {
+  if (result.status === 402) throw new Error(JSON.stringify(paymentRequired(result)));
   if (result.errorBody && typeof result.errorBody.code === "string") {
     throw new Error(JSON.stringify(result.errorBody));
   }
   throw new Error(result.error ?? "Request failed");
 }
+
+/**
+ * A paid call on an organization with no prepaid balance comes back `402
+ * payment_required`, with the gateway's `message` and `prepay` block (path,
+ * minimums, example body). Kept whole, with the tool that does it named on top,
+ * so the agent prepays and retries instead of reading a generic failure.
+ */
+export function paymentRequired(result: { error?: string; errorBody?: ApiErrorBody; status?: number }): Record<string, unknown> {
+  return {
+    status: 402,
+    ...(result.errorBody ?? { error: result.error ?? "payment_required" }),
+    nextStep:
+      "This call costs money and the organization has no prepaid balance. Call distribute_prepay (amounts in cents: " +
+      `topup_amount_cents >= ${PREPAY_MINIMUMS.topup_amount_cents}, auto_topup_amount_cents >= ${PREPAY_MINIMUMS.auto_topup_amount_cents}, ` +
+      `auto_topup_threshold_cents >= ${PREPAY_MINIMUMS.auto_topup_threshold_cents}). It returns a payment url: open it, or give it to your human to pay by card. ` +
+      "Check with distribute_prepaid_status, then retry this call.",
+  };
+}
+
+/**
+ * The gateway's prepaid minimums (api-service `src/lib/agent-prepay.ts`, owner
+ * 2026-10-12: $10 prepay, $15 reload, $5 threshold). Named here only to tell an
+ * agent what to send; the gateway is what refuses less (`amount_below_minimum`).
+ */
+export const PREPAY_MINIMUMS = {
+  topup_amount_cents: 1000,
+  auto_topup_amount_cents: 1500,
+  auto_topup_threshold_cents: 500,
+} as const;
+
+/**
+ * Said in every signup and prepay tool, and in the discovery document: an agent
+ * gets its own key and pays for itself, with no human in the loop.
+ */
+export const NO_HUMAN_NEEDED =
+  "No human needed: request a key with an email, prepay when you need to spend.";
 
 /**
  * Same scope as the API (owner 2026-10-12): whatever a key can do on the public
@@ -88,6 +125,58 @@ export const toolDefinitions = {
       "Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. " +
       "Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
     schema: z.object({}),
+  },
+  distribute_signup_start: {
+    description:
+      NO_HUMAN_NEEDED + " " +
+      "Step 1 of 2 to open a distribute.you account and get an API key, with no key and no dashboard. " +
+      "Give an email you can read and a phone number in international format (+33612345678; only its format is checked). " +
+      "A 6-digit code is emailed; then call distribute_signup_complete with it. " +
+      "An email that already has an account works too: it gets one more key for that account. " +
+      "Free to call. No free credit, no trial, no subscription: you prepay when you want to spend (distribute_prepay).",
+    schema: z.object({
+      email: z.string().describe("Email to open the account with. The code is sent there."),
+      phone: z.string().describe("Phone number in international format, e.g. +33612345678. Only its format is checked."),
+    }),
+  },
+  distribute_signup_complete: {
+    description:
+      "Step 2 of 2: send the 6-digit code emailed by distribute_signup_start and get an API key. " +
+      "This MCP session uses the new key at once (when it had none), so every other tool works right after. " +
+      "Keep `apiKey`: it is shown once. To use it later, reconnect this MCP server with the header `Authorization: Bearer <apiKey>`, " +
+      "or call https://api.distribute.you with that header. Each call makes a NEW key. " +
+      "Reading the account is free; anything that spends needs a prepaid balance first (distribute_prepay).",
+    schema: z.object({
+      email: z.string().describe("The email given to distribute_signup_start."),
+      code: z.string().describe("The 6-digit code emailed to it."),
+      keyName: z.string().optional().describe("A name for the key, to recognize it later (e.g. the agent's name)."),
+    }),
+  },
+  distribute_prepay: {
+    description:
+      NO_HUMAN_NEEDED + " " +
+      "Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). " +
+      "Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically: " +
+      "when the balance falls under `auto_topup_threshold_cents`, it adds `auto_topup_amount_cents`. Auto top-up is required. " +
+      "Amounts in cents, minimums: topup_amount_cents 1000 ($10), auto_topup_amount_cents 1500 ($15), auto_topup_threshold_cents 500 ($5). " +
+      "Less is refused with `amount_below_minimum`, naming the field. No free credit, no subscription. " +
+      "Then check distribute_prepaid_status until `state` is `active`. " +
+      TARGET_HINT,
+    schema: z.object({
+      topup_amount_cents: z.number().int().describe("First prepayment, in cents. At least 1000 ($10)."),
+      auto_topup_amount_cents: z.number().int().describe("Amount added at each automatic reload, in cents. At least 1500 ($15)."),
+      auto_topup_threshold_cents: z.number().int().describe("Balance under which the card reloads, in cents. At least 500 ($5)."),
+      success_url: z.string().optional().describe("Page shown after paying (default https://distribute.you/?prepaid=paid)."),
+      cancel_url: z.string().optional().describe("Page shown if payment is cancelled (default https://distribute.you/?prepaid=cancelled)."),
+      ...targetShape,
+    }),
+  },
+  distribute_prepaid_status: {
+    description:
+      "Read the prepaid account: `state` (awaiting_payment: not paid yet; active: ready to spend; card_not_reloadable or auto_topup_off: fix it with distribute_prepay; not_prepaid), " +
+      "`balance_cents`, `paid_cents`, the automatic reload settings and whether the saved card can reload. Free to call. " +
+      TARGET_HINT,
+    schema: z.object({ ...targetShape }),
   },
   distribute_list_workflows: {
     description:
@@ -232,6 +321,18 @@ export async function handleToolCall(
     case "distribute_status":
       return handleStatus();
 
+    case "distribute_signup_start":
+      return handleSignupStart(args);
+
+    case "distribute_signup_complete":
+      return handleSignupComplete(args);
+
+    case "distribute_prepay":
+      return handlePrepay(args);
+
+    case "distribute_prepaid_status":
+      return handlePrepaidStatus(args);
+
     case "distribute_list_workflows":
       return handleListWorkflows(args);
 
@@ -277,11 +378,13 @@ async function handleStatus() {
   if (!status.configured) {
     return {
       status: "not_configured",
-      message: "No distribute.you API key on this session",
+      message: "No distribute.you API key on this session. " + NO_HUMAN_NEEDED,
       instructions: [
-        "1. Create a key at https://dashboard.distribute.you — open your organization, then API Key.",
-        "2. Send it on every request as the header: Authorization: Bearer <your key>",
-        "3. In an MCP client, put that header in this server's configuration and reconnect.",
+        "1. Call distribute_signup_start with an email you can read and a phone number (+33612345678). A 6-digit code is emailed.",
+        "2. Call distribute_signup_complete with that email and code. It returns an API key, and this session uses it right away.",
+        "3. Reading the account is free. To spend, prepay with distribute_prepay (from $10, auto top-up required) and pay at the url it returns.",
+        "Already have a key? Send it as the header Authorization: Bearer <your key> (in an MCP client, put that header in this server's configuration and reconnect). " +
+          "A person can also create one at https://dashboard.distribute.you (organization, then API Key).",
       ],
     };
   }
@@ -965,6 +1068,91 @@ async function handleGetLead(args: Record<string, unknown>) {
   };
 }
 
+// ── Agent signup and prepay ──────────────────────────────────────────────────
+
+/**
+ * An agent opens its own account (owner 2026-10-12): the gateway's public
+ * `/v1/agent-signups/{start,complete}` take no key, mint one, and the agent
+ * prepays through `/v1/billing/accounts/prepaid_checkout`. Bodies and refusals
+ * are the gateway's, handed back whole (code_invalid, code_expired,
+ * amount_below_minimum ... each with its `message`).
+ */
+function failWhole(result: { error?: string; errorBody?: ApiErrorBody; status?: number }): never {
+  if (result.status === 402) throw new Error(JSON.stringify(paymentRequired(result)));
+  throw new Error(JSON.stringify({ status: result.status ?? null, ...(result.errorBody ?? { error: result.error }) }));
+}
+
+async function handleSignupStart(args: Record<string, unknown>) {
+  const result = await callApi<Record<string, unknown>>("/v1/agent-signups/start", {
+    method: "POST",
+    body: { email: args.email, phone: args.phone },
+    public: true,
+  });
+  if (result.error) failWhole(result);
+  return {
+    ...(result.data as Record<string, unknown>),
+    next: "A 6-digit code was emailed. Call distribute_signup_complete with this email and the code.",
+  };
+}
+
+async function handleSignupComplete(args: Record<string, unknown>) {
+  const body: Record<string, unknown> = { email: args.email, code: args.code };
+  if (typeof args.keyName === "string") body.keyName = args.keyName;
+  const result = await callApi<Record<string, unknown>>("/v1/agent-signups/complete", {
+    method: "POST",
+    body,
+    public: true,
+  });
+  if (result.error) failWhole(result);
+  const data = result.data as Record<string, unknown>;
+  return {
+    ...data,
+    keepThisKey: "apiKey is shown once. Store it: it is the account's password.",
+    useTheKey: {
+      thisSession: "This MCP session now uses this key when it had none: call distribute_status next.",
+      reconnectMcp: "Later, connect to https://mcp.distribute.you/mcp with the header `Authorization: Bearer <apiKey>`.",
+      api: "Or call https://api.distribute.you with the same header (first call: GET /v1/me).",
+    },
+    toSpend: "Reading is free. Before any call that spends, prepay with distribute_prepay (from $10, auto top-up required).",
+  };
+}
+
+/**
+ * The key a successful distribute_signup_complete minted, for the session to
+ * adopt. Only for that tool, and only a string key: nothing else a tool returns
+ * can change which key a session calls with.
+ */
+export function mintedKey(tool: string, result: unknown): string | null {
+  if (tool !== "distribute_signup_complete" || !result || typeof result !== "object") return null;
+  const key = (result as Record<string, unknown>).apiKey;
+  return typeof key === "string" && key ? key : null;
+}
+
+async function handlePrepay(args: Record<string, unknown>) {
+  const body: Record<string, unknown> = {
+    topup_amount_cents: args.topup_amount_cents,
+    auto_topup_amount_cents: args.auto_topup_amount_cents,
+    auto_topup_threshold_cents: args.auto_topup_threshold_cents,
+  };
+  if (typeof args.success_url === "string") body.success_url = args.success_url;
+  if (typeof args.cancel_url === "string") body.cancel_url = args.cancel_url;
+  const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/prepaid_checkout", args), {
+    method: "POST",
+    body,
+  });
+  if (result.error) failWhole(result);
+  return {
+    ...(result.data as Record<string, unknown>),
+    next: "Open `url` to pay by card, or give it to your human. Then call distribute_prepaid_status until `state` is `active`, and retry what needed money.",
+  };
+}
+
+async function handlePrepaidStatus(args: Record<string, unknown>) {
+  const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/prepaid_status", args));
+  if (result.error) failWhole(result);
+  return result.data;
+}
+
 // ── The whole API, by intent ─────────────────────────────────────────────────
 
 async function handleFindApi(args: Record<string, unknown>) {
@@ -1084,9 +1272,7 @@ async function handleCallApi(args: Record<string, unknown>) {
     // The staff Unibox shows which operation a generic call ran, not only "call_api".
     mcpTool: `distribute_call_api ${match.operation.method} ${match.operation.path}`,
   });
-  if (result.error) {
-    throw new Error(JSON.stringify({ status: result.status ?? null, ...(result.errorBody ?? { error: result.error }) }));
-  }
+  if (result.error) failWhole(result);
 
   const data = forCustomer(result.data);
   const text = JSON.stringify(data);
