@@ -45,6 +45,29 @@ const apiEmails = await api(`/v1/emails?brandId=${BRAND}&orgId=${ORG}&limit=20&o
 const mcpEmails = await call("distribute_list_emails", { brandId: BRAND, orgId: ORG, limit: 20 });
 const emailKey = (e) => [e.id, e.leadId, e.subject, e.bodyText, (e.sequence ?? []).map((s) => [s.step, s.subject ?? null, s.bodyText, s.daysSinceLastStep])];
 same(`emails page 1 (${apiEmails.emails.length}) id/lead/subject/body + every step`, apiEmails.emails.map(emailKey), mcpEmails.emails.map(emailKey));
+// 3b. each step's send status, against GET /v1/email-sequences (joined on leadId + campaign + step)
+const seqs = [];
+for (let cursor = null, i = 0; i < 25; i++) {
+  const page = await api(`/v1/email-sequences?brandId=${BRAND}&orgId=${ORG}&limit=2000${cursor ? `&cursor=${cursor}` : ""}`).catch((e) => ({ error: String(e) }));
+  if (page.error) { console.log(`NOTE  email-sequences refused by the API: ${page.error.slice(0, 200)}`); break; }
+  seqs.push(...page.sequences);
+  cursor = page.nextCursor;
+  if (!cursor) break;
+}
+if (seqs.length) {
+  const counts = {};
+  for (const q of seqs) for (const st of q.steps) counts[`${st.kind}:${st.status}`] = (counts[`${st.kind}:${st.status}`] ?? 0) + 1;
+  console.log(`STATUS API counts for brand ${BRAND} (${seqs.length} sequences): ${JSON.stringify(counts)}`);
+  const want = (e) => {
+    const cands = seqs.filter((q) => q.leadId === e.leadId);
+    const q = cands.find((c) => c.campaignId === e.campaignId) ?? (cands.length === 1 ? cands[0] : null);
+    return (e.sequence ?? []).map((s) => { const st = q?.steps.find((x) => x.step === s.step); return [s.step, st?.status ?? null, st?.sentAt ?? null]; });
+  };
+  same("emails page 1 step status + sentAt", apiEmails.emails.map(want), mcpEmails.emails.map((e) => (e.sequence ?? []).filter((s) => s.bodyText !== null).map((s) => [s.step, s.status ?? null, s.sentAt ?? null])));
+  const mc = {};
+  for (const e of mcpEmails.emails) for (const s of e.sequence ?? []) mc[`${s.kind}:${s.status}`] = (mc[`${s.kind}:${s.status}`] ?? 0) + 1;
+  console.log(`STATUS MCP list_emails page 1 step counts: ${JSON.stringify(mc)}`);
+}
 const leaked = JSON.stringify(mcpEmails).match(/"(promptRaw|responseRaw|variablesRaw|model|tokensInput|tokensOutput|generationRun|promptType)"/g);
 console.log(`${leaked ? "LEAK" : "CLEAN"} internals in MCP emails: ${leaked ?? "none"}`);
 if (leaked) failed++;

@@ -159,23 +159,24 @@ export const toolDefinitions = {
   distribute_list_emails: {
     description:
       "List the cold emails we wrote and sent for a brand: for each prospect, the first email and every follow-up " +
-      "(`subject`, then `sequence`: one entry per step with its `bodyText` and the days since the previous step), with who it went to " +
-      "(lead name, title, company, `leadId`) and when it was written. Use it to answer \"what did you send for my brand\". " +
-      "Whether each lead was actually sent, delivered or replied is on distribute_list_leads / distribute_get_lead. " +
+      "(`subject`, then `sequence`: one entry per step with its `bodyText`, its `kind` (first_email or follow_up) and its send `status`: " +
+      "`sent` at `sentAt`, `queued` (goes out in the prospect's business hours) or `stopped` (will not go out: reply, bounce, opt-out, meeting, sequence stopped)), " +
+      "with who it went to (`leadEmail`, lead name, title, company, `leadId`). Use it to answer \"what did you send for my brand, and what is still queued\". " +
+      "Replies and delivery are on distribute_list_leads / distribute_get_lead. " +
       "Pages with `limit` and `offset`. " +
       TARGET_HINT,
     schema: z.object({
       ...targetShape,
       brandId: z.string().describe("Brand whose emails to list (from distribute_status)."),
       campaignId: z.string().optional().describe("Only the emails of this campaign part."),
-      limit: z.number().int().min(1).max(100).optional().describe("Emails per page (default 20, max 100)."),
+      limit: z.number().int().min(1).max(200).optional().describe("Emails per page (default 20, max 200)."),
       offset: z.number().int().min(0).optional().describe("How many to skip (pagination)."),
     }),
   },
   distribute_get_lead: {
     description:
       "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them " +
-      "(first email and follow-ups, subject and body), and the conversation (every message we sent and every reply they wrote, oldest first). " +
+      "(first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). " +
       "Take `lead_id` from distribute_list_leads (`id`). " +
       TARGET_HINT,
     schema: z.object({
@@ -793,6 +794,84 @@ function emailForAssistant(email: Record<string, unknown>) {
   return forCustomer(withoutFields(email, EMAIL_PLUMBING));
 }
 
+/**
+ * What happened to each email step, as the API serves it on GET /v1/email-sequences
+ * (instantly-service owns it): `sent` at `sentAt`, `queued` (goes out in the
+ * prospect's business hours), or `stopped` (will not go out). One row per sequence;
+ * a prospect emailed again after the re-contact window has two.
+ */
+type SendStep = { step: number; kind: string; status: string; sentAt: string | null };
+type SendSequence = { leadId: string | null; leadEmail: string | null; campaignId: string | null; steps: SendStep[] };
+type SendRecords = { byLead: Map<string, SendSequence[]>; complete: boolean; error?: unknown };
+
+/** Pages of 2000 (the route's max); a brand of 50k prospects stops here rather than paging forever. */
+const SEND_RECORD_MAX_PAGES = 25;
+
+/**
+ * The brand's send records, paged until every wanted lead is found or the
+ * brand is exhausted. A refusal is returned, never thrown: the written emails
+ * are still worth reading without their status, and the refusal says why.
+ */
+async function sendRecordsFor(brandId: string, orgId: unknown, wanted: Set<string>): Promise<SendRecords> {
+  const byLead = new Map<string, SendSequence[]>();
+  let cursor: string | null = null;
+  for (let page = 0; page < SEND_RECORD_MAX_PAGES; page++) {
+    const params = new URLSearchParams({ brandId, limit: "2000" });
+    if (cursor) params.set("cursor", cursor);
+    const res = await callApi<{ sequences: SendSequence[]; nextCursor: string | null }>(withTarget(`/v1/email-sequences?${params}`, { orgId }));
+    if (res.error) {
+      console.error("[mcp] email send status unavailable", { brandId, status: res.status ?? null, error: res.errorBody ?? res.error });
+      return { byLead, complete: false, error: { status: res.status ?? null, ...(res.errorBody ?? { error: res.error }) } };
+    }
+    const data = res.data as { sequences: SendSequence[]; nextCursor: string | null };
+    for (const seq of data.sequences) {
+      if (!seq.leadId) continue;
+      const list = byLead.get(seq.leadId) ?? [];
+      list.push(seq);
+      byLead.set(seq.leadId, list);
+    }
+    cursor = data.nextCursor;
+    if (!cursor) return { byLead, complete: true };
+    if ([...wanted].every((id) => byLead.has(id))) return { byLead, complete: true };
+  }
+  console.error("[mcp] email send status: page cap reached", { brandId, pages: SEND_RECORD_MAX_PAGES });
+  return { byLead, complete: false };
+}
+
+/**
+ * A written email with what happened to each of its steps, joined on leadId and
+ * step (the sequence of the same campaign when a prospect has several). Every
+ * written step carries `kind`, `status` and `sentAt`; a step the sequence holds
+ * but the written email does not is listed after them, with no body.
+ */
+function withSendStatus(email: Record<string, unknown>, records: SendRecords): Record<string, unknown> {
+  const leadId = typeof email.leadId === "string" ? email.leadId : null;
+  const candidates = (leadId && records.byLead.get(leadId)) || [];
+  const seq =
+    candidates.find((c) => c.campaignId && c.campaignId === email.campaignId) ?? (candidates.length === 1 ? candidates[0] : undefined);
+  if (!seq) {
+    const why = records.error
+      ? "The send status could not be read: see sendStatusUnavailable."
+      : candidates.length > 1
+        ? "This prospect has several sequences and none matches this email's campaign."
+        : records.complete
+          ? "No send record: none of these emails has been queued or sent yet."
+          : "Not found within the pages read.";
+    return { ...email, sendStatusNote: why };
+  }
+  const written = Array.isArray(email.sequence) ? (email.sequence as Array<Record<string, unknown>>) : [];
+  const byStep = new Map(seq.steps.map((st) => [st.step, st]));
+  const steps: Array<Record<string, unknown>> = written.map((w) => {
+    const st = byStep.get(Number(w.step));
+    return { ...w, kind: st?.kind ?? null, status: st?.status ?? null, sentAt: st?.sentAt ?? null };
+  });
+  const writtenSteps = new Set(written.map((w) => Number(w.step)));
+  for (const st of seq.steps) {
+    if (!writtenSteps.has(st.step)) steps.push({ step: st.step, bodyText: null, kind: st.kind, status: st.status, sentAt: st.sentAt });
+  }
+  return { ...email, leadEmail: seq.leadEmail, sequence: steps };
+}
+
 async function handleListLeads(args: Record<string, unknown>) {
   const params = new URLSearchParams({ brandId: String(args.brandId) });
   if (args.campaignId) params.set("campaignId", String(args.campaignId));
@@ -821,11 +900,16 @@ async function handleListEmails(args: Record<string, unknown>) {
   const result = await callApi<{ emails: Array<Record<string, unknown>> }>(withTarget(`/v1/emails?${params}`, { orgId: args.orgId }));
   if (result.error) failWith(result);
   const emails = (result.data as { emails: Array<Record<string, unknown>> }).emails;
+  const wanted = new Set(emails.map((e) => e.leadId).filter((id): id is string => typeof id === "string"));
+  const records: SendRecords = wanted.size
+    ? await sendRecordsFor(String(args.brandId), args.orgId, wanted)
+    : { byLead: new Map(), complete: true };
   return {
     count: emails.length,
     // A full page means there may be more: ask again from the next offset.
     nextOffset: emails.length === limit ? offset + limit : null,
-    emails: emails.map(emailForAssistant),
+    ...(records.error ? { sendStatusUnavailable: records.error } : {}),
+    emails: emails.map((e) => emailForAssistant(withSendStatus(e, records))),
   };
 }
 
@@ -868,9 +952,11 @@ async function handleGetLead(args: Record<string, unknown>) {
   ]);
 
   const generation = written.error ? null : ((written.data as { generation: Record<string, unknown> | null }).generation ?? null);
+  const records = generation && brandId && leadId ? await sendRecordsFor(brandId, args.orgId, new Set([leadId])) : null;
   return {
     lead: leadForAssistant(row),
-    emailsWritten: generation ? emailForAssistant(generation) : null,
+    emailsWritten: generation ? emailForAssistant(records ? withSendStatus(generation, records) : generation) : null,
+    ...(records?.error ? { sendStatusUnavailable: records.error } : {}),
     ...(written.error ? { emailsWrittenUnavailable: written.errorBody ?? { error: written.error, status: written.status ?? null } } : {}),
     conversation: conversation.error ? null : forCustomer((conversation.data as { conversation?: unknown }).conversation ?? conversation.data),
     ...(conversation.error

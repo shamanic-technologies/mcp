@@ -194,6 +194,7 @@ describe("the emails of a brand", () => {
   const email = {
     id: "e1",
     leadId: "L1",
+    campaignId: "c1",
     subject: "skip the warmup",
     bodyText: "Hi",
     bodyHtml: "<p>Hi</p>",
@@ -205,35 +206,92 @@ describe("the emails of a brand", () => {
     model: "some-model",
     tokensInput: 100,
     generationRun: { totalCostInUsdCents: "1" },
-    sendStatus: "sent", // a field the API adds later passes through untouched
+    extraField: "kept", // a field the API adds later passes through untouched
+  };
+  const sendRecord = {
+    leadId: "L1",
+    leadEmail: "ann@acme.co",
+    campaignId: "c1",
+    steps: [
+      { step: 1, kind: "first_email", status: "sent", sentAt: "2026-10-12T07:00:00.000Z" },
+      { step: 2, kind: "follow_up", status: "queued", sentAt: null },
+    ],
+  };
+  const route = (seqPages: Array<Record<string, unknown>>, emails = [email]) => {
+    let page = 0;
+    mockCallApi.mockImplementation(async (path: string) => {
+      if (path.startsWith("/v1/emails?")) return { data: { emails }, status: 200 };
+      if (path.startsWith("/v1/email-sequences?")) return seqPages[page++] as never;
+      throw new Error(`unexpected ${path}`);
+    });
   };
 
-  it("gives every step's text, no internals, and passes new fields through", async () => {
-    mockCallApi.mockResolvedValue({ data: { emails: [email] }, status: 200 });
+  it("gives every step's text with its send status, joined on leadId and step, and no internals", async () => {
+    route([{ data: { brandId: "b1", count: 1, nextCursor: null, sequences: [sendRecord] }, status: 200 }]);
     const res = (await handleToolCall("distribute_list_emails", { brandId: "b1", orgId: "o1", limit: 1 })) as { emails: Array<Record<string, unknown>>; nextOffset: number };
     expect(mockCallApi).toHaveBeenCalledWith("/v1/emails?brandId=b1&limit=1&offset=0&orgId=o1");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/email-sequences?brandId=b1&limit=2000&orgId=o1");
     expect(res.emails[0]).toEqual({
       id: "e1",
       leadId: "L1",
+      campaignId: "c1",
+      leadEmail: "ann@acme.co",
       subject: "skip the warmup",
       bodyText: "Hi",
       sequence: [
-        { step: 1, bodyText: "Hi", daysSinceLastStep: 0 },
-        { step: 2, bodyText: "Following up", daysSinceLastStep: 3 },
+        { step: 1, bodyText: "Hi", daysSinceLastStep: 0, kind: "first_email", status: "sent", sentAt: "2026-10-12T07:00:00.000Z" },
+        { step: 2, bodyText: "Following up", daysSinceLastStep: 3, kind: "follow_up", status: "queued", sentAt: null },
       ],
-      sendStatus: "sent",
+      extraField: "kept",
     });
     expect(res.nextOffset).toBe(1);
+  });
+
+  it("pages the send records until every lead of the page is found", async () => {
+    route([
+      { data: { sequences: [{ ...sendRecord, leadId: "OTHER" }], nextCursor: "k1" }, status: 200 },
+      { data: { sequences: [sendRecord], nextCursor: "k2" }, status: 200 },
+    ]);
+    const res = (await handleToolCall("distribute_list_emails", { brandId: "b1" })) as { emails: Array<{ sequence: Array<{ status: string }> }> };
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/email-sequences?brandId=b1&limit=2000&cursor=k1");
+    // Found on page 2: page 3 (cursor k2) is never asked for.
+    expect(mockCallApi).toHaveBeenCalledTimes(3);
+    expect(res.emails[0]!.sequence.map((s) => s.status)).toEqual(["sent", "queued"]);
+  });
+
+  it("picks the sequence of the email's own campaign when a prospect was emailed twice", async () => {
+    route([{ data: { sequences: [{ ...sendRecord, campaignId: "old", steps: [{ step: 1, kind: "first_email", status: "stopped", sentAt: null }] }, sendRecord], nextCursor: null }, status: 200 }]);
+    const res = (await handleToolCall("distribute_list_emails", { brandId: "b1" })) as { emails: Array<{ sequence: Array<{ status: string }> }> };
+    expect(res.emails[0]!.sequence[0]!.status).toBe("sent");
+  });
+
+  it("says plainly when a prospect has no send record yet", async () => {
+    route([{ data: { sequences: [], nextCursor: null }, status: 200 }]);
+    const res = (await handleToolCall("distribute_list_emails", { brandId: "b1" })) as { emails: Array<Record<string, unknown>> };
+    expect(res.emails[0]!.sendStatusNote).toMatch(/No send record/);
+  });
+
+  it("still returns the emails when the status read is refused, and hands the refusal back whole", async () => {
+    route([{ error: "boom", status: 500, errorBody: { error: "[instantly-service] email-sequences: unusable step 0" } }]);
+    const res = (await handleToolCall("distribute_list_emails", { brandId: "b1" })) as Record<string, any>;
+    expect(res.sendStatusUnavailable).toEqual({ status: 500, error: "[instantly-service] email-sequences: unusable step 0" });
+    expect(res.emails[0].subject).toBe("skip the warmup");
+    expect(res.emails[0].sendStatusNote).toMatch(/could not be read/);
   });
 });
 
 describe("one lead", () => {
-  it("returns the lead, its written emails and its conversation, and reports a refused part in place", async () => {
+  it("returns the lead, its written emails with their send status, and its conversation, and reports a refused part in place", async () => {
     mockCallApi.mockImplementation(async (path: string) => {
       if (path.startsWith("/v1/leads/r1")) {
         return { data: { leadDetail: { id: "r1", leadId: "L1", email: "a@b.co", campaignId: "c1", brandIds: ["b1"], sent: true, opened: true, lead: { name: "Ann" } } }, status: 200 };
       }
-      if (path.startsWith("/v1/emails/by-lead/L1")) return { data: { generation: { id: "e1", subject: "Hi", promptRaw: "x" } }, status: 200 };
+      if (path.startsWith("/v1/emails/by-lead/L1")) {
+        return { data: { generation: { id: "e1", leadId: "L1", campaignId: "c1", subject: "Hi", promptRaw: "x", sequence: [{ step: 1, bodyText: "Hi" }] } }, status: 200 };
+      }
+      if (path.startsWith("/v1/email-sequences?")) {
+        return { data: { sequences: [{ leadId: "L1", leadEmail: "a@b.co", campaignId: "c1", steps: [{ step: 1, kind: "first_email", status: "sent", sentAt: "t" }] }], nextCursor: null }, status: 200 };
+      }
       if (path.startsWith("/v1/conversations")) {
         return { error: "thread_unavailable", status: 502, errorBody: { error: "thread_unavailable", code: "thread_unavailable" } };
       }
@@ -241,10 +299,18 @@ describe("one lead", () => {
     });
     const res = (await handleToolCall("distribute_get_lead", { lead_id: "r1", orgId: "o1" })) as Record<string, any>;
     expect(mockCallApi).toHaveBeenCalledWith("/v1/emails/by-lead/L1?brandId=b1&campaignId=c1&orgId=o1");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/email-sequences?brandId=b1&limit=2000&orgId=o1");
     expect(mockCallApi).toHaveBeenCalledWith("/v1/conversations?campaign_id=c1&email=a%40b.co&brandId=b1&orgId=o1");
     expect(res.lead).toMatchObject({ id: "r1", email: "a@b.co", sent: true, person: { name: "Ann" } });
     expect(res.lead).not.toHaveProperty("opened");
-    expect(res.emailsWritten).toEqual({ id: "e1", subject: "Hi" });
+    expect(res.emailsWritten).toEqual({
+      id: "e1",
+      leadId: "L1",
+      campaignId: "c1",
+      leadEmail: "a@b.co",
+      subject: "Hi",
+      sequence: [{ step: 1, bodyText: "Hi", kind: "first_email", status: "sent", sentAt: "t" }],
+    });
     expect(res.conversation).toBeNull();
     expect(res.conversationUnavailable).toEqual({ error: "thread_unavailable", code: "thread_unavailable" });
   });
