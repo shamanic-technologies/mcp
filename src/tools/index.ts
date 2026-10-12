@@ -121,10 +121,17 @@ export const toolDefinitions = {
   distribute_status: {
     description:
       "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. " +
-      "A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand and never carries staff or beta powers. " +
+      "A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. " +
       "Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. " +
+      "A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` " +
+      "with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. " +
       "Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
-    schema: z.object({}),
+    schema: z.object({
+      search: z
+        .string()
+        .optional()
+        .describe("Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive)."),
+    }),
   },
   distribute_signup_start: {
     description:
@@ -319,7 +326,7 @@ export async function handleToolCall(
 ): Promise<unknown> {
   switch (name) {
     case "distribute_status":
-      return handleStatus();
+      return handleStatus(args);
 
     case "distribute_signup_start":
       return handleSignupStart(args);
@@ -372,7 +379,10 @@ export async function handleToolCall(
 }
 
 // Handler implementations
-async function handleStatus() {
+/** Above this many organizations, distribute_status lists them without their brands, so the answer fits an assistant's context. */
+export const STATUS_FULL_LIST_MAX_ORGS = 20;
+
+async function handleStatus(args: Record<string, unknown> = {}) {
   const status = getConfigStatus();
   
   if (!status.configured) {
@@ -390,7 +400,8 @@ async function handleStatus() {
   }
 
   // Check API connectivity
-  const result = await callApi<Record<string, unknown>>("/v1/me");
+  const search = typeof args.search === "string" ? args.search.trim() : "";
+  const result = await callApi<Record<string, unknown>>(search ? `/v1/me?q=${encodeURIComponent(search)}` : "/v1/me");
 
   if (result.error) {
     return {
@@ -425,11 +436,22 @@ async function handleStatus() {
       }))
     : null;
 
+  // A key in very many organizations (staff) would get an answer no assistant
+  // can hold: list them by name only and say how to narrow down.
+  const tooMany = !search && organizations !== null && organizations.length > STATUS_FULL_LIST_MAX_ORGS;
   return {
     status: "connected",
     summary: me.summary ?? null,
     user: me.user ?? null,
-    organizations,
+    ...(search ? { search } : {}),
+    organizations: tooMany
+      ? organizations.map((o) => ({ id: o.id, name: o.name, brandCount: o.brands.length }))
+      : organizations,
+    ...(tooMany
+      ? {
+          narrowDown: `This key reaches ${organizations.length} organizations, listed without their brands. Call distribute_status again with search (a name or domain) to get one organization with its brands.`,
+        }
+      : {}),
     organization: me.organization ?? null,
     keyScope: me.keyScope ?? null,
     howToTarget: TARGET_HINT,
@@ -1208,6 +1230,7 @@ async function handleDescribeApi(args: Record<string, unknown>) {
     summary: op.summary,
     description: op.description,
     deprecated: op.deprecated,
+    ...(op.staffOnly ? { staffOnly: "Served to this session because its key is a distribute.you staff key. The gateway checks it again on the call." } : {}),
     parameters: op.params,
     body: op.hasBody ? resolveSchema(op.bodySchema, components) : null,
     howToCall: {
@@ -1234,8 +1257,8 @@ async function handleCallApi(args: Record<string, unknown>) {
     throw new Error(`${pathOnly} is not available through this server (${PLATFORM_INTERNAL_PATHS.join(", ")} are distribute.you internals).`);
   }
 
-  // Only operations of the gateway's served customer catalogue. A staff route is
-  // absent from it, so it cannot be reached through here.
+  // Only operations of the catalogue the gateway serves THIS key: a staff route
+  // is in it for a staff user's key alone, so a client key cannot reach it here.
   const { operations } = await getCatalog();
   const match = matchPath(operations, method, pathOnly);
   if (!match) {

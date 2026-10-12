@@ -45,7 +45,7 @@ Claude Desktop, Cursor, and other clients that take a JSON config:
 
 Call `distribute_status` first — it confirms the key reached the gateway, lists every organization the key reaches with its brands, and says what to fix if the key was refused. The API cannot tell a revoked key from a mistyped one; both come back as a refusal.
 
-**What a key covers.** A key belongs to its user and reaches every organization that user is a member of (membership is checked on every request; distribute.you staff count as members of every organization). It never belongs to a single brand and never carries staff, admin or beta powers, even when its user has them.
+**What a key covers.** A key belongs to its user and reaches every organization that user is a member of (membership is checked on every request; distribute.you staff count as members of every organization). It never belongs to a single brand. A distribute.you staff user's key may also call the few staff operations the API opens to it (create an organization for a new client, grant free credit); the API decides that on every call, and a client key never sees them.
 
 **Naming the organization.** Each call acts in a single organization. The tools that read brand or campaign data take an optional `brandId` (which selects the organization holding that brand) and an optional `orgId` (add it when a brand sits in several organizations). Take both from `distribute_status`. A user in a single organization can omit them. A user in several who names nothing gets the API's refusal back unchanged, `org_target_required` with its `message`, `fix` and the `organizations` to choose from; the server never picks one. The other refusals come back the same way: `brand_in_several_orgs`, `brands_span_orgs`, `org_not_member`, `org_not_found`, `brand_not_found`, `no_organization`, `membership_unavailable`.
 
@@ -68,7 +68,7 @@ Curated tools, for the frequent jobs:
 
 | Tool | What it does |
 |---|---|
-| `distribute_status` | Confirm the key works and list every organization it reaches, with their brands. With no key, says how to get one |
+| `distribute_status` | Confirm the key works and list every organization it reaches, with their brands. `search` (a name or domain) narrows the list to matching organizations and brands; a key in more than 20 organizations gets them by name only until it searches. With no key, says how to get one |
 | `distribute_list_brands` | The brands (companies, websites) of the organization a call targets |
 | `distribute_list_workflows` | Available workflows, including ones written in a named expert's style |
 | `distribute_suggest_icp` | Read a brand's site and propose an ideal customer profile |
@@ -86,7 +86,7 @@ The whole API, by intent:
 | `distribute_describe_api` | One operation in full: parameters and the JSON body it takes |
 | `distribute_call_api` | Call any API operation with your key, reads and writes, answered exactly as the API answers |
 
-**Why generic tools, and why they do not rot.** The three generic tools read the API's own published catalogue (`https://api.distribute.you/openapi.json`, re-read every 10 minutes). That catalogue lists every customer operation and leaves staff-only routes out, so it is exactly the API's scope; a route the API adds is reachable from here as soon as it is published, with no new release of this server. `distribute_call_api` only calls operations of that catalogue.
+**Why generic tools, and why they do not rot.** The three generic tools read the catalogue the API serves for the session's key (`https://api.distribute.you/v1/me/openapi.json`; the public `https://api.distribute.you/openapi.json` with no key or a refused one), cached per key and re-read every 10 minutes. For a client key it lists every customer operation; for a staff user's key it adds the staff operations that key may call, marked `staffOnly`. So it is exactly that key's scope, one key's catalogue never answers another key's session, and a route the API adds is reachable from here as soon as it is published, with no new release of this server. `distribute_call_api` only calls operations of that catalogue.
 
 **Emails and their status.** `distribute_list_emails` returns each written email with its `sequence`: one entry per step with `bodyText`, `kind` (`first_email` or `follow_up`) and its send `status` (`sent` at `sentAt`, `queued`: goes out in the prospect's business hours, or `stopped`: will not go out), joined from the API's `GET /v1/email-sequences` on `leadId` and step. So "every email we sent for my brand, with what is still queued" is one call. `distribute_get_lead` gives the same for one prospect. If the status read is refused, the emails still come back, with the refusal in `sendStatusUnavailable`.
 

@@ -1,6 +1,7 @@
 /**
- * The gateway's own catalogue of what a customer key can do, read from the
- * openapi document the gateway SERVES (`GET {gateway}/openapi.json`).
+ * The gateway's own catalogue of what a key can do, read from the openapi
+ * document the gateway SERVES for that key (`GET {gateway}/v1/me/openapi.json`),
+ * or its public one (`GET {gateway}/openapi.json`) for a session with no key.
  *
  * Why this is the source and not a hand-written list: the owner's rule is that
  * the MCP and the API have the same functional scope (2026-10-12). A tool per
@@ -11,10 +12,17 @@
  * tomorrow, with no release of this server. The document is re-read every
  * CATALOG_TTL_MS.
  *
+ * Each key gets its own document: a staff user's key is served, on top of the
+ * public operations, the few a staff key may call (`x-staff-only: true`, e.g.
+ * create an organization for a new client), and a client key is never served
+ * them. So the catalogue is cached per key, and one key's copy never answers
+ * another key's session. Which key is staff is the gateway's call, not ours.
+ *
  * What a key may actually read or write inside that surface is decided by the
  * gateway on every call, never here.
  */
-import { getConfigStatus } from "./api-client.js";
+import { createHash } from "node:crypto";
+import { callApi, getApiKey, getConfigStatus } from "./api-client.js";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
@@ -40,6 +48,8 @@ export interface CatalogOperation {
   bodySchema: unknown;
   needsKey: boolean;
   deprecated: boolean;
+  /** Served only to a staff user's key (`x-staff-only: true`). The gateway still decides on each call. */
+  staffOnly: boolean;
 }
 
 /**
@@ -72,21 +82,30 @@ interface Compiled {
   loadedAt: number;
 }
 
-let cache: Compiled | null = null;
-let inflight: Promise<Compiled> | null = null;
+/** At most this many keys' catalogues are held; the oldest is dropped first. */
+const MAX_CACHED_KEYS = 200;
 
-/** Test seam: load a document directly instead of fetching it. */
-export function loadCatalogFromDocument(doc: Json, now = Date.now()): Compiled {
-  cache = compile(doc, now);
-  return cache;
+const cache = new Map<string, Compiled>();
+const inflight = new Map<string, Promise<Compiled>>();
+
+/** The cache slot of a key: a hash, so no key sits in memory as a map key; "public" for none. */
+export function catalogSlot(key: string | null): string {
+  return key ? createHash("sha256").update(key).digest("hex").slice(0, 32) : "public";
+}
+
+/** Test seam: load a document directly instead of fetching it, for `key` (default: the call's key). */
+export function loadCatalogFromDocument(doc: Json, now = Date.now(), key: string | null = getApiKey()): Compiled {
+  const compiled = compile(doc, now);
+  cache.set(catalogSlot(key), compiled);
+  return compiled;
 }
 
 export function resetCatalog(): void {
-  cache = null;
-  inflight = null;
+  cache.clear();
+  inflight.clear();
 }
 
-async function fetchDocument(): Promise<Json> {
+async function fetchPublicDocument(): Promise<Json> {
   const url = `${getConfigStatus().apiUrl}/openapi.json`;
   const res = await fetch(url, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`The gateway's openapi.json answered HTTP ${res.status} (${url})`);
@@ -94,32 +113,57 @@ async function fetchDocument(): Promise<Json> {
 }
 
 /**
- * The compiled catalogue. Re-read after the TTL; when a re-read fails the last
- * good copy keeps serving (the failure is logged), and with no copy at all the
- * call fails loudly rather than pretending the API has no routes.
+ * The document the gateway serves for `key`. A key the gateway refuses (401,
+ * 403) reads the public document, as a session with no key does: that is what
+ * the gateway's contract says such a key may see. Any other failure is thrown.
+ */
+async function fetchDocument(key: string | null): Promise<Json> {
+  if (!key) return fetchPublicDocument();
+  const res = await callApi<Json>("/v1/me/openapi.json", { apiKey: key, mcpTool: "distribute_find_api (catalogue)" });
+  if (res.status === 401 || res.status === 403) return fetchPublicDocument();
+  if (res.error || !res.data || typeof res.data !== "object") {
+    throw new Error(`The gateway's /v1/me/openapi.json answered ${res.status ? `HTTP ${res.status}` : "nothing"}: ${res.error ?? "not a JSON document"}`);
+  }
+  return res.data;
+}
+
+/**
+ * The compiled catalogue for the key of the call being served. Re-read after
+ * the TTL; when a re-read fails the last good copy keeps serving (the failure
+ * is logged), and with no copy at all the call fails loudly rather than
+ * pretending the API has no routes.
  */
 export async function getCatalog(): Promise<Compiled> {
+  const key = getApiKey();
+  const slot = catalogSlot(key);
   const now = Date.now();
-  if (cache && now - cache.loadedAt < CATALOG_TTL_MS) return cache;
-  if (!inflight) {
-    inflight = fetchDocument()
-      .then((doc) => {
-        cache = compile(doc, Date.now());
-        return cache;
-      })
+  const held = cache.get(slot);
+  if (held && now - held.loadedAt < CATALOG_TTL_MS) return held;
+  let pending = inflight.get(slot);
+  if (!pending) {
+    pending = fetchDocument(key)
+      .then((doc) => store(slot, compile(doc, Date.now())))
       .catch((err) => {
-        if (cache) {
+        const last = cache.get(slot);
+        if (last) {
           console.error("[mcp] could not refresh the gateway catalogue, serving the last copy", err);
-          cache = { ...cache, loadedAt: Date.now() };
-          return cache;
+          return store(slot, { ...last, loadedAt: Date.now() });
         }
         throw new Error(`Could not read the API catalogue from the gateway: ${err instanceof Error ? err.message : String(err)}`);
       })
       .finally(() => {
-        inflight = null;
+        inflight.delete(slot);
       });
+    inflight.set(slot, pending);
   }
-  return inflight;
+  return pending;
+}
+
+function store(slot: string, compiled: Compiled): Compiled {
+  cache.delete(slot);
+  cache.set(slot, compiled);
+  while (cache.size > MAX_CACHED_KEYS) cache.delete(cache.keys().next().value as string);
+  return compiled;
 }
 
 function compile(doc: Json, now: number): Compiled {
@@ -158,6 +202,7 @@ function compile(doc: Json, now: number): Compiled {
         bodySchema: body?.schema ?? null,
         needsKey: Array.isArray(op.security) && op.security.length > 0,
         deprecated: op.deprecated === true,
+        staffOnly: op["x-staff-only"] === true,
       });
     }
   }
@@ -167,7 +212,7 @@ function compile(doc: Json, now: number): Compiled {
 // ── Search by intent ─────────────────────────────────────────────────────────
 
 const STOPWORDS = new Set(
-  "a an the of for to in on my our me i we you your with and or by from at is are be all every each list get show give read see find what which who how do does can please that this it its".split(" "),
+  "a an the of for to in on my our me i we you your with and or by from at is are be all every each list get show give read see find what which who how do does did done was were has have had when where can please that this it its".split(" "),
 );
 
 /** Words people use for a capability, mapped onto the words the gateway uses. */
@@ -200,6 +245,20 @@ const SYNONYMS: Record<string, string[]> = {
   sequence: ["email", "followup"],
   "follow-up": ["followup"],
   followup: ["followup", "email"],
+  org: ["organization"],
+  organization: ["org"],
+  client: ["organization", "org"],
+  customer: ["organization", "org"],
+  account: ["organization"],
+  invite: ["invitation", "member"],
+  invitation: ["invite", "member"],
+  teammate: ["member", "invite"],
+  colleague: ["member", "invite"],
+  member: ["invite", "invitation"],
+  grant: ["credit", "free"],
+  free: ["credit", "grant"],
+  gift: ["credit", "grant"],
+  answer: ["reply", "conversation"],
 };
 
 /** Crude stem: lowercase, strip plural / -ing / -ed, so "emails" finds "email". */
@@ -227,7 +286,18 @@ const VERB_METHOD: Record<string, HttpMethod> = {
   list: "GET", get: "GET", show: "GET", read: "GET", see: "GET", find: "GET", fetch: "GET",
   create: "POST", add: "POST", start: "POST", send: "POST", launch: "POST",
   update: "PATCH", change: "PATCH", set: "PUT", edit: "PATCH",
-  delete: "DELETE", remove: "DELETE", revoke: "DELETE",
+  delete: "DELETE", remove: "DELETE", revoke: "DELETE", cancel: "DELETE",
+  grant: "POST", invite: "POST", open: "POST",
+};
+
+/**
+ * Verbs that only say what to DO when they open the ask: "reply to Ann" is a
+ * write, "what did Ann reply" is a read.
+ */
+const LEADING_VERB_METHOD: Record<string, HttpMethod> = {
+  reply: "POST", answer: "POST",
+  // A question asks to read.
+  what: "GET", who: "GET", did: "GET", has: "GET", have: "GET", how: "GET", when: "GET", which: "GET", is: "GET", are: "GET",
 };
 
 export interface SearchHit {
@@ -237,21 +307,19 @@ export interface SearchHit {
   tag: string | null;
   summary: string;
   required: string[];
+  /** Present (true) only on an operation the gateway serves to a staff user's key alone. */
+  staffOnly?: true;
   score: number;
 }
 
 export function searchOperations(ops: CatalogOperation[], query: string, limit = 10, tag?: string): SearchHit[] {
-  const words = tokens(query);
-  const expanded = new Map<string, number>(); // token -> weight multiplier
-  for (const w of words) {
-    expanded.set(w, 1);
-    for (const s of SYNONYMS[w] ?? []) if (!expanded.has(stem(s))) expanded.set(stem(s), 0.8);
-  }
-  const wantMethod = query
-    .toLowerCase()
-    .split(/[^a-z]+/)
-    .map((w) => VERB_METHOD[w])
-    .find(Boolean);
+  const words = [...new Set(tokens(query))];
+  // Each word of the ask, with the gateway words it may appear as.
+  const asked = words.map((w) => ({
+    forms: [[w, 1] as [string, number], ...(SYNONYMS[w] ?? []).map((s) => [stem(s), 0.8] as [string, number]).filter(([s]) => s !== w)],
+  }));
+  const rawWords = query.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  const wantMethod = LEADING_VERB_METHOD[rawWords[0] ?? ""] ?? rawWords.map((w) => VERB_METHOD[w]).find(Boolean);
 
   const hits: SearchHit[] = [];
   for (const op of ops) {
@@ -265,11 +333,11 @@ export function searchOperations(ops: CatalogOperation[], query: string, limit =
     ];
     let score = 0;
     let matched = 0;
-    for (const [tok, mult] of expanded) {
+    for (const { forms } of asked) {
       let best = 0;
-      for (const [set, weight] of fields) if (set.has(tok)) best = Math.max(best, weight);
-      if (best > 0) matched += mult === 1 ? 1 : 0;
-      score += best * mult;
+      for (const [tok, mult] of forms) for (const [set, weight] of fields) if (set.has(tok)) best = Math.max(best, weight * mult);
+      if (best > 0) matched += 1;
+      score += best;
     }
     if (score === 0) continue;
     // Every word of the ask found somewhere beats a few found strongly.
@@ -283,6 +351,7 @@ export function searchOperations(ops: CatalogOperation[], query: string, limit =
       tag: op.tag,
       summary: op.summary,
       required: op.params.filter((p) => p.required).map((p) => `${p.name} (${p.in})`),
+      ...(op.staffOnly ? { staffOnly: true as const } : {}),
       score: Math.round(score * 10) / 10,
     });
   }

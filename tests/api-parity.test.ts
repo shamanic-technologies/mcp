@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../src/lib/api-client.js", () => ({
   getConfigStatus: vi.fn(() => ({ configured: true, apiUrl: "https://api.distribute.you" })),
@@ -9,7 +9,7 @@ vi.mock("../src/lib/api-client.js", () => ({
 }));
 
 import { handleToolCall, toolDefinitions, MAX_RESULT_CHARS } from "../src/tools/index.js";
-import { callApi } from "../src/lib/api-client.js";
+import { callApi, getApiKey } from "../src/lib/api-client.js";
 import { loadCatalogFromDocument, resetCatalog, searchOperations, matchPath, getCatalog } from "../src/lib/gateway-catalog.js";
 
 const mockCallApi = vi.mocked(callApi);
@@ -78,20 +78,16 @@ describe("the catalogue is the gateway's served document", () => {
 
   it("is re-read from the gateway once its copy is older than the TTL, so a new route appears with no release", async () => {
     resetCatalog();
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ paths: { "/v1/brand-new-route": { get: op("Brand new route") } } }), { status: 200 }),
-    );
+    mockCallApi.mockResolvedValue({ data: { paths: { "/v1/brand-new-route": { get: op("Brand new route") } } }, status: 200 });
     const { operations } = await getCatalog();
-    expect(fetchSpy).toHaveBeenCalledWith("https://api.distribute.you/openapi.json", expect.anything());
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/me/openapi.json", expect.objectContaining({ apiKey: "test-key" }));
     expect(operations.map((o) => o.path)).toEqual(["/v1/brand-new-route"]);
-    fetchSpy.mockRestore();
   });
 
   it("fails loudly when it has never been read, instead of claiming the API has no routes", async () => {
     resetCatalog();
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("nope", { status: 502 }));
+    mockCallApi.mockResolvedValue({ error: "HTTP 502", status: 502 });
     await expect(getCatalog()).rejects.toThrow(/Could not read the API catalogue/);
-    fetchSpy.mockRestore();
   });
 });
 
@@ -325,5 +321,117 @@ describe("tool names say what they are for", () => {
     for (const name of ["distribute_list_leads", "distribute_list_emails", "distribute_get_lead", "distribute_find_api", "distribute_describe_api", "distribute_call_api"]) {
       expect(toolDefinitions).toHaveProperty(name);
     }
+  });
+});
+
+/**
+ * A staff user's key is served a few staff operations on top of the public ones
+ * (`x-staff-only: true`); a client key and a session with no key never are.
+ * The catalogue is cached per key, so one key's copy never answers another's.
+ */
+describe("each key searches the catalogue the gateway serves THAT key", () => {
+  const staffOp = (summary: string, extra: Record<string, unknown> = {}) => ({ ...op(summary, { tag: "Staff (key)", ...extra }), "x-staff-only": true });
+  const PUBLIC = { paths: { "/v1/billing/credits/grants": { get: op("Get the org's own credit-grants ledger", { tag: "Billing" }) } } };
+  const STAFF = {
+    paths: {
+      ...PUBLIC.paths,
+      "/v1/staff/orgs": { post: staffOp("Create an organization for a new client", { operationId: "createOrg" }) },
+      "/v1/staff/orgs/{orgId}/credit-grants": { post: staffOp("Grant free credit to an organization", { operationId: "grantCredit" }) },
+    },
+  };
+  const keyed = vi.mocked(getApiKey);
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    resetCatalog();
+    mockCallApi.mockImplementation(async (_path: string, opts?: { apiKey?: string }) => {
+      if (opts?.apiKey === "staff-key") return { data: STAFF, status: 200 };
+      if (opts?.apiKey === "client-key") return { data: PUBLIC, status: 200 };
+      return { error: "Invalid API key", status: 401 };
+    });
+    fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify(PUBLIC), { status: 200 }));
+  });
+  afterEach(() => {
+    fetchSpy.mockRestore();
+    keyed.mockImplementation(() => "test-key");
+  });
+
+  const findAs = async (key: string | null, query: string) => {
+    keyed.mockImplementation(() => key);
+    return (await handleToolCall("distribute_find_api", { query })) as { matches: Array<{ operationId: string; staffOnly?: true }> };
+  };
+
+  it("a staff key finds 'grant free credit to an organization', marked staff-only", async () => {
+    const res = await findAs("staff-key", "grant free credit to an organization");
+    expect(res.matches[0]).toMatchObject({ operationId: "grantCredit", staffOnly: true });
+    expect((await findAs("staff-key", "create an organization for a new client")).matches[0]!.operationId).toBe("createOrg");
+  });
+
+  it("a client key, served after a staff key, never sees a staff operation", async () => {
+    await findAs("staff-key", "grant free credit");
+    const res = await findAs("client-key", "grant free credit to an organization");
+    expect(res.matches.map((m) => m.operationId)).not.toContain("grantCredit");
+    expect(res.matches.every((m) => !m.staffOnly)).toBe(true);
+  });
+
+  it("a session with no key reads the public document", async () => {
+    const res = await findAs(null, "grant free credit to an organization");
+    expect(fetchSpy).toHaveBeenCalledWith("https://api.distribute.you/openapi.json", expect.anything());
+    expect(res.matches.map((m) => m.operationId)).not.toContain("grantCredit");
+  });
+
+  it("a key the gateway refuses reads the public document", async () => {
+    const res = await findAs("revoked-key", "grant free credit to an organization");
+    expect(fetchSpy).toHaveBeenCalled();
+    expect(res.matches.map((m) => m.operationId)).not.toContain("grantCredit");
+  });
+
+  it("a client key cannot call a staff path through distribute_call_api", async () => {
+    keyed.mockImplementation(() => "client-key");
+    await expect(handleToolCall("distribute_call_api", { method: "POST", path: "/v1/staff/orgs/o1/credit-grants", body: {} })).rejects.toThrow(/not an operation/);
+  });
+
+  it("describe_api says an operation is staff-only", async () => {
+    keyed.mockImplementation(() => "staff-key");
+    const res = (await handleToolCall("distribute_describe_api", { operationId: "grantCredit" })) as Record<string, unknown>;
+    expect(res.staffOnly).toMatch(/staff key/);
+  });
+});
+
+describe("plain words land the account operations a staff agent asks for", () => {
+  const DOC2 = {
+    paths: {
+      "/v1/orgs/{orgId}/invitations": {
+        post: op("Invite a person to the organization", { tag: "Organization", operationId: "invite" }),
+        get: op("List the organization's pending invitations", { tag: "Organization", operationId: "listInvites" }),
+      },
+      "/v1/orgs/{orgId}/invitations/{id}": { delete: op("Revoke an invitation", { tag: "Organization", operationId: "revokeInvite" }) },
+      "/v1/conversations": { get: op("Read the messages exchanged with a lead on a campaign", { tag: "Conversations", operationId: "readConversation" }) },
+      "/v1/conversations/replies": { post: op("Reply to a lead in the email thread", { tag: "Conversations", operationId: "replyThread" }) },
+      "/v1/leads": { get: op("List leads", { tag: "Leads", operationId: "listLeads" }) },
+      "/v1/leads/by-email": { get: op("Find a lead by email", { tag: "Leads", operationId: "leadByEmail" }) },
+      "/v1/emails": { get: op("List generated emails by brand", { tag: "Emails", operationId: "listEmails" }) },
+      "/v1/billing/credits/grants": { get: op("Get the org's own credit-grants ledger", { tag: "Billing", operationId: "grantsLedger" }) },
+      "/v1/staff/orgs": { post: { ...op("Create an organization", { tag: "Staff (key)", operationId: "createOrg" }), "x-staff-only": true } },
+      "/v1/staff/orgs/{orgId}/credit-grants": { post: { ...op("Grant free credit", { tag: "Staff (key)", operationId: "grantCredit" }), "x-staff-only": true } },
+    },
+  };
+  const top = (q: string) => {
+    resetCatalog();
+    const { operations } = loadCatalogFromDocument(DOC2);
+    return searchOperations(operations, q)[0]!.operationId;
+  };
+
+  it.each([
+    ["invite a person to the organization", "invite"],
+    ["list invites", "listInvites"],
+    ["revoke an invite", "revokeInvite"],
+    ["create an organization", "createOrg"],
+    ["grant free credit to an organization", "grantCredit"],
+    ["reply to a person in the email thread", "replyThread"],
+    ["what did the prospect reply", "readConversation"],
+    ["find a lead by email", "leadByEmail"],
+  ])("%s", (q, id) => {
+    expect(top(q)).toBe(id);
   });
 });
