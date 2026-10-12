@@ -218,7 +218,7 @@
         }
       },
       "distribute_list_emails": {
-        "description": "List the cold emails we wrote and sent for a brand: for each prospect, the first email and every follow-up (`subject`, then `sequence`: one entry per step with its `bodyText` and the days since the previous step), with who it went to (lead name, title, company, `leadId`) and when it was written. Use it to answer \"what did you send for my brand\". Whether each lead was actually sent, delivered or replied is on distribute_list_leads / distribute_get_lead. Pages with `limit` and `offset`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "List the cold emails we wrote and sent for a brand: for each prospect, the first email and every follow-up (`subject`, then `sequence`: one entry per step with its `bodyText`, its `kind` (first_email or follow_up) and its send `status`: `sent` at `sentAt`, `queued` (goes out in the prospect's business hours) or `stopped` (will not go out: reply, bounce, opt-out, meeting, sequence stopped)), with who it went to (`leadEmail`, lead name, title, company, `leadId`). Use it to answer \"what did you send for my brand, and what is still queued\". Replies and delivery are on distribute_list_leads / distribute_get_lead. Pages with `limit` and `offset`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_emails",
           "definitions": {
@@ -240,8 +240,8 @@
                 "limit": {
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 100,
-                  "description": "Emails per page (default 20, max 100)."
+                  "maximum": 200,
+                  "description": "Emails per page (default 20, max 200)."
                 },
                 "offset": {
                   "type": "integer",
@@ -259,7 +259,7 @@
         }
       },
       "distribute_get_lead": {
-        "description": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body), and the conversation (every message we sent and every reply they wrote, oldest first). Take `lead_id` from distribute_list_leads (`id`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Take `lead_id` from distribute_list_leads (`id`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_get_lead",
           "definitions": {
@@ -977,7 +977,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List the cold emails we wrote and sent for a brand: for each prospect, the first email and every follow-up (`subject`, then `sequence`: one entry per step with its `bodyText` and the days since the previous step), with who it went to (lead name, title, company, `leadId`) and when it was written. Use it to answer \"what did you send for my brand\". Whether each lead was actually sent, delivered or replied is on distribute_list_leads / distribute_get_lead. Pages with `limit` and `offset`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "List the cold emails we wrote and sent for a brand: for each prospect, the first email and every follow-up (`subject`, then `sequence`: one entry per step with its `bodyText`, its `kind` (first_email or follow_up) and its send `status`: `sent` at `sentAt`, `queued` (goes out in the prospect's business hours) or `stopped` (will not go out: reply, bounce, opt-out, meeting, sequence stopped)), with who it went to (`leadEmail`, lead name, title, company, `leadId`). Use it to answer \"what did you send for my brand, and what is still queued\". Replies and delivery are on distribute_list_leads / distribute_get_lead. Pages with `limit` and `offset`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_list_emails. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_emails\".",
         "requestBody": {
           "content": {
@@ -1000,8 +1000,8 @@
                   "limit": {
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 100,
-                    "description": "Emails per page (default 20, max 100)."
+                    "maximum": 200,
+                    "description": "Emails per page (default 20, max 200)."
                   },
                   "offset": {
                     "type": "integer",
@@ -1053,7 +1053,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body), and the conversation (every message we sent and every reply they wrote, oldest first). Take `lead_id` from distribute_list_leads (`id`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Take `lead_id` from distribute_list_leads (`id`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_get_lead. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_get_lead\".",
         "requestBody": {
           "content": {
