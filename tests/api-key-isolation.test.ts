@@ -33,6 +33,19 @@ describe("each call goes out under its own session's key", () => {
     expect(res.error).toMatch(/API key not provided/);
   });
 
+  it("marks every gateway call as MCP traffic, named by the tool it serves", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
+    await runWithApiKey("k", () => callApi("/v1/me"), "distribute_status");
+    await runWithApiKey("k", () => callApi("/v1/leads", { mcpTool: "distribute_call_api GET /v1/leads" }), "distribute_call_api");
+    await runWithApiKey("k", () => callApi("/v1/me"));
+    const headers = fetchSpy.mock.calls.map((c) => c[1]!.headers as Record<string, string>);
+    expect(headers[0]).toMatchObject({ "x-distribute-client": "mcp", "x-distribute-mcp-tool": "distribute_status", Authorization: "Bearer k" });
+    expect(headers[1]!["x-distribute-mcp-tool"]).toBe("distribute_call_api GET /v1/leads");
+    expect(headers[2]!["x-distribute-client"]).toBe("mcp");
+    expect(headers[2]).not.toHaveProperty("x-distribute-mcp-tool");
+    fetchSpy.mockRestore();
+  });
+
   it("adds the MCP traffic marker headers from one single place", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
     MCP_CLIENT_HEADERS["x-test-marker"] = "1";
