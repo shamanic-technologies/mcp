@@ -82,6 +82,32 @@ function headerSafe(value: string): string {
   return value.replace(/[^\x20-\x7E]/g, "?").slice(0, 200);
 }
 
+/**
+ * The ETag the gateway serves for `path`, read with HEAD (no body crosses the
+ * wire). Same key and MCP headers as callApi. `etag` is null when the gateway
+ * sends none; `error` is set when the check itself failed.
+ */
+export async function headApi(
+  path: string,
+  options: { apiKey?: string | null; mcpTool?: string } = {},
+): Promise<{ status: number | null; etag: string | null; error?: string }> {
+  const tool = options.mcpTool ?? callContext.getStore()?.tool ?? null;
+  const key = options.apiKey === undefined ? getApiKey() : options.apiKey;
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+      method: "HEAD",
+      headers: {
+        ...MCP_CLIENT_HEADERS,
+        ...(tool ? { [MCP_TOOL_HEADER]: headerSafe(tool) } : {}),
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
+      },
+    });
+    return { status: response.status, etag: response.ok ? response.headers.get("etag") : null, ...(response.ok ? {} : { error: `HTTP ${response.status}` }) };
+  } catch (err) {
+    return { status: null, etag: null, error: err instanceof Error ? err.message : "Network error" };
+  }
+}
+
 export async function callApi<T>(
   path: string,
   options: {

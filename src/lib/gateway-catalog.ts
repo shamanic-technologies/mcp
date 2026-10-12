@@ -8,9 +8,14 @@
  * route written by hand rots the day a route is added to the gateway. The served
  * document is the gateway's customer contract: it lists the customer routes and
  * leaves the staff-only ones out, so reading it gives the MCP exactly the API's
- * surface, and a route the gateway ships tomorrow is reachable from the MCP
- * tomorrow, with no release of this server. The document is re-read every
- * CATALOG_TTL_MS.
+ * surface, and a route the gateway ships is reachable from the MCP the moment
+ * the gateway serves it, with no release of this server.
+ *
+ * No staleness window (owner 2026-10-12: a route added to the API is reachable
+ * from the MCP with NO delay). Every discovery call asks the gateway, with a
+ * HEAD, for the ETag of the document it serves NOW for that key; the compiled
+ * copy is reused only while that ETag is unchanged, and re-read the moment it
+ * differs. A gateway that sends no ETag gets its document re-read on every call.
  *
  * Each key gets its own document: a staff user's key is served, on top of the
  * public operations, the few a staff key may call (`x-staff-only: true`, e.g.
@@ -22,7 +27,7 @@
  * gateway on every call, never here.
  */
 import { createHash } from "node:crypto";
-import { callApi, getApiKey, getConfigStatus } from "./api-client.js";
+import { callApi, getApiKey, getConfigStatus, headApi } from "./api-client.js";
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 const METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE"];
@@ -74,12 +79,14 @@ export function isPlatformInternal(pathTemplate: string): boolean {
 
 type Json = Record<string, unknown>;
 
-export const CATALOG_TTL_MS = 10 * 60 * 1000;
-
 interface Compiled {
   operations: CatalogOperation[];
   components: Json;
   loadedAt: number;
+  /** The gateway's ETag for the document this copy was compiled from (null: none sent, never reused). */
+  etag?: string | null;
+  /** Test seam only: a copy loaded by hand is served without asking the gateway. */
+  pinned?: boolean;
 }
 
 /** At most this many keys' catalogues are held; the oldest is dropped first. */
@@ -95,7 +102,7 @@ export function catalogSlot(key: string | null): string {
 
 /** Test seam: load a document directly instead of fetching it, for `key` (default: the call's key). */
 export function loadCatalogFromDocument(doc: Json, now = Date.now(), key: string | null = getApiKey()): Compiled {
-  const compiled = compile(doc, now);
+  const compiled = { ...compile(doc, now), pinned: true };
   cache.set(catalogSlot(key), compiled);
   return compiled;
 }
@@ -128,33 +135,55 @@ async function fetchDocument(key: string | null): Promise<Json> {
 }
 
 /**
- * The compiled catalogue for the key of the call being served. Re-read after
- * the TTL; when a re-read fails the last good copy keeps serving (the failure
- * is logged), and with no copy at all the call fails loudly rather than
- * pretending the API has no routes.
+ * The ETag of the document the gateway serves NOW for `key` (the public one for
+ * no key, or a key it refuses, as fetchDocument reads). Throws when the check
+ * itself fails: serving a copy that may be out of date is what this replaces.
+ */
+async function servedVersion(key: string | null): Promise<string | null> {
+  const tool = "distribute_find_api (catalogue check)";
+  if (key) {
+    const own = await headApi("/v1/me/openapi.json", { apiKey: key, mcpTool: tool });
+    if (own.status !== 401 && own.status !== 403) {
+      if (own.error) throw new Error(`The gateway's /v1/me/openapi.json check answered ${own.error}`);
+      return own.etag;
+    }
+  }
+  const pub = await headApi("/openapi.json", { apiKey: null, mcpTool: tool });
+  if (pub.error) throw new Error(`The gateway's /openapi.json check answered ${pub.error}`);
+  return pub.etag;
+}
+
+/**
+ * The compiled catalogue for the key of the call being served, exactly as the
+ * gateway serves it now: the held copy is reused only when the gateway's ETag
+ * for it is unchanged (checked on this call), and re-read otherwise. With no
+ * copy that can be confirmed current, the call fails loudly rather than search
+ * a list that may be out of date, or pretend the API has no routes.
  */
 export async function getCatalog(): Promise<Compiled> {
   const key = getApiKey();
   const slot = catalogSlot(key);
-  const now = Date.now();
   const held = cache.get(slot);
-  if (held && now - held.loadedAt < CATALOG_TTL_MS) return held;
-  let pending = inflight.get(slot);
+  if (held?.pinned) return held;
+  let etag: string | null;
+  try {
+    etag = await servedVersion(key);
+  } catch (err) {
+    throw new Error(`Could not read the API catalogue from the gateway: ${err instanceof Error ? err.message : String(err)}`);
+  }
+  if (held && etag && held.etag === etag) return held;
+  const flight = `${slot}|${etag ?? `none-${Date.now()}`}`;
+  let pending = inflight.get(flight);
   if (!pending) {
     pending = fetchDocument(key)
-      .then((doc) => store(slot, compile(doc, Date.now())))
+      .then((doc) => store(slot, { ...compile(doc, Date.now()), etag }))
       .catch((err) => {
-        const last = cache.get(slot);
-        if (last) {
-          console.error("[mcp] could not refresh the gateway catalogue, serving the last copy", err);
-          return store(slot, { ...last, loadedAt: Date.now() });
-        }
         throw new Error(`Could not read the API catalogue from the gateway: ${err instanceof Error ? err.message : String(err)}`);
       })
       .finally(() => {
-        inflight.delete(slot);
+        inflight.delete(flight);
       });
-    inflight.set(slot, pending);
+    inflight.set(flight, pending);
   }
   return pending;
 }

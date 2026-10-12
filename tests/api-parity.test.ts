@@ -3,13 +3,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 vi.mock("../src/lib/api-client.js", () => ({
   getConfigStatus: vi.fn(() => ({ configured: true, apiUrl: "https://api.distribute.you" })),
   callApi: vi.fn(),
+  headApi: vi.fn(async () => ({ status: 200, etag: null })),
   getApiKey: vi.fn(() => "test-key"),
   isConfigured: vi.fn(() => true),
   runWithApiKey: vi.fn((_k: unknown, fn: () => unknown) => fn()),
 }));
 
 import { handleToolCall, toolDefinitions, MAX_RESULT_CHARS } from "../src/tools/index.js";
-import { callApi, getApiKey } from "../src/lib/api-client.js";
+import { callApi, getApiKey, headApi } from "../src/lib/api-client.js";
 import { loadCatalogFromDocument, resetCatalog, searchOperations, matchPath, getCatalog } from "../src/lib/gateway-catalog.js";
 
 const mockCallApi = vi.mocked(callApi);
@@ -76,7 +77,7 @@ describe("the catalogue is the gateway's served document", () => {
     }
   });
 
-  it("is re-read from the gateway once its copy is older than the TTL, so a new route appears with no release", async () => {
+  it("is read from the gateway the key is served, so a new route appears with no release", async () => {
     resetCatalog();
     mockCallApi.mockResolvedValue({ data: { paths: { "/v1/brand-new-route": { get: op("Brand new route") } } }, status: 200 });
     const { operations } = await getCatalog();
@@ -88,6 +89,61 @@ describe("the catalogue is the gateway's served document", () => {
     resetCatalog();
     mockCallApi.mockResolvedValue({ error: "HTTP 502", status: 502 });
     await expect(getCatalog()).rejects.toThrow(/Could not read the API catalogue/);
+  });
+});
+
+describe("the catalogue has no staleness window", () => {
+  const docWith = (path: string) => ({ data: { paths: { [path]: { get: op(`Read ${path}`) } } }, status: 200 });
+  const mockHead = () => vi.mocked(headApi);
+  afterEach(() => {
+    vi.mocked(headApi).mockReset();
+    vi.mocked(headApi).mockImplementation(async () => ({ status: 200, etag: null }));
+  });
+
+  it("reuses the held copy only while the gateway's ETag for it is unchanged, checked on every call", async () => {
+    resetCatalog();
+    mockHead().mockResolvedValue({ status: 200, etag: 'W/"v1"' });
+    mockCallApi.mockResolvedValue(docWith("/v1/one"));
+    await getCatalog();
+    await getCatalog();
+    expect(mockHead()).toHaveBeenCalledTimes(2);
+    expect(mockHead()).toHaveBeenCalledWith("/v1/me/openapi.json", expect.objectContaining({ apiKey: "test-key" }));
+    expect(mockCallApi).toHaveBeenCalledTimes(1);
+  });
+
+  it("serves a route the gateway added on the very next call", async () => {
+    resetCatalog();
+    mockHead().mockResolvedValueOnce({ status: 200, etag: 'W/"v1"' }).mockResolvedValueOnce({ status: 200, etag: 'W/"v2"' });
+    mockCallApi.mockResolvedValueOnce(docWith("/v1/one")).mockResolvedValueOnce(docWith("/v1/brand-new"));
+    expect((await getCatalog()).operations.map((o) => o.path)).toEqual(["/v1/one"]);
+    expect((await getCatalog()).operations.map((o) => o.path)).toEqual(["/v1/brand-new"]);
+  });
+
+  it("re-reads on every call when the gateway sends no ETag", async () => {
+    resetCatalog();
+    mockHead().mockResolvedValue({ status: 200, etag: null });
+    mockCallApi.mockResolvedValue(docWith("/v1/one"));
+    await getCatalog();
+    await getCatalog();
+    expect(mockCallApi).toHaveBeenCalledTimes(2);
+  });
+
+  it("never serves a copy it could not confirm current", async () => {
+    resetCatalog();
+    mockHead().mockResolvedValueOnce({ status: 200, etag: 'W/"v1"' }).mockResolvedValueOnce({ status: 502, etag: null, error: "HTTP 502" });
+    mockCallApi.mockResolvedValue(docWith("/v1/one"));
+    await getCatalog();
+    await expect(getCatalog()).rejects.toThrow(/Could not read the API catalogue/);
+  });
+
+  it("checks the public document for a key the gateway refuses", async () => {
+    resetCatalog();
+    mockHead().mockResolvedValueOnce({ status: 401, etag: null, error: "HTTP 401" }).mockResolvedValueOnce({ status: 200, etag: 'W/"pub"' });
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ paths: {} }), { status: 200 }));
+    mockCallApi.mockResolvedValue({ error: "Invalid API key", status: 401 });
+    await getCatalog();
+    expect(mockHead()).toHaveBeenLastCalledWith("/openapi.json", expect.objectContaining({ apiKey: null }));
+    fetchSpy.mockRestore();
   });
 });
 
