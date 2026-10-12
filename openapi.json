@@ -25,13 +25,18 @@
     },
     "schemas": {
       "distribute_status": {
-        "description": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand and never carries staff or beta powers. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+        "description": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_status",
           "definitions": {
             "distribute_status": {
               "type": "object",
-              "properties": {},
+              "properties": {
+                "search": {
+                  "type": "string",
+                  "description": "Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive)."
+                }
+              },
               "additionalProperties": false
             }
           },
@@ -668,14 +673,19 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand and never carries staff or beta powers. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+        "summary": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
         "description": "MCP Tool: distribute_status. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_status\".",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                  "search": {
+                    "type": "string",
+                    "description": "Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive)."
+                  }
+                },
                 "additionalProperties": false
               }
             }

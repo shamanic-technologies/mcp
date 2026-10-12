@@ -559,6 +559,32 @@ describe("distribute_status says whose key this is", () => {
     expect(out.howToTarget).toContain("pass brandId (and orgId if a brand sits in several orgs)");
   });
 
+  it("forwards a search to the gateway as q, so a staff key gets one organization, not all of them", async () => {
+    mockCallApi.mockResolvedValue({ data: { ...me, organizations: [me.organizations[1]] } });
+
+    const out = (await handleToolCall("distribute_status", { search: "Globex Inc" })) as Record<string, any>;
+
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/me?q=Globex%20Inc");
+    expect(out.search).toBe("Globex Inc");
+    expect(out.organizations).toEqual([me.organizations[1]]);
+  });
+
+  it("lists a key's many organizations without their brands, and says to search", async () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: `o${i}`, name: `Org ${i}`, brands: [{ id: `b${i}`, name: `B${i}`, domain: `b${i}.com` }] }));
+    mockCallApi.mockResolvedValue({ data: { ...me, organizations: many } });
+
+    const out = (await handleToolCall("distribute_status", {})) as Record<string, any>;
+
+    expect(out.organizations).toHaveLength(30);
+    expect(out.organizations[0]).toEqual({ id: "o0", name: "Org 0", brandCount: 1 });
+    expect(out.narrowDown).toContain("search");
+  });
+
+  it("tells a staff agent to search", () => {
+    expect(toolDefinitions.distribute_status.description).toContain("staff key");
+    expect(toolDefinitions.distribute_status.schema.shape.search).toBeDefined();
+  });
+
   it("explains a refused key instead of a bare error", async () => {
     mockCallApi.mockResolvedValue({ error: "Invalid API key" });
 
