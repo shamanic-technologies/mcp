@@ -13,12 +13,17 @@ import { AsyncLocalStorage } from "node:async_hooks";
 const API_BASE_URL = process.env.DISTRIBUTE_API_URL || "https://api.distribute.you";
 
 /**
- * Headers this server adds to EVERY gateway call, so the gateway can tell MCP
- * traffic from a direct API call (e.g. to record each MCP call as a conversation).
- * This is the single place such a marker goes: no api-service release names one
- * yet, so it is empty. When the gateway ships its marker, add it here and nowhere else.
+ * Headers this server adds to EVERY gateway call, so the gateway tells MCP
+ * traffic from a direct API call. api-service (v0.112.95, `src/lib/call-log.ts`)
+ * files every user-key call on that person's staff Unibox thread, under channel
+ * `mcp` when `x-distribute-client: mcp` is present, named by the tool in
+ * `x-distribute-mcp-tool` (MCP_TOOL_HEADER, set per call from the call's context).
+ * This is the single place the marker lives.
  */
-export const MCP_CLIENT_HEADERS: Record<string, string> = {};
+export const MCP_CLIENT_HEADERS: Record<string, string> = { "x-distribute-client": "mcp" };
+
+/** Names the MCP tool a gateway call serves (api-service keeps the first 200 chars). */
+export const MCP_TOOL_HEADER = "x-distribute-mcp-tool";
 
 /**
  * The gateway's refusal body, kept whole. A multi-org key that names no target
@@ -49,15 +54,23 @@ export interface ApiResponse<T> {
  * calling at the same time could then send one customer's request under another
  * customer's key as soon as a tool awaited between two gateway calls.
  */
-const keyContext = new AsyncLocalStorage<string | null>();
+const callContext = new AsyncLocalStorage<{ key: string | null; tool: string | null }>();
 
-/** Run `fn` with `key` as the key every gateway call inside it is made with. */
-export function runWithApiKey<T>(key: string | null, fn: () => Promise<T>): Promise<T> {
-  return keyContext.run(key, fn);
+/**
+ * Run `fn` with `key` as the key every gateway call inside it is made with, and
+ * `tool` as the MCP tool those calls are made for (sent as MCP_TOOL_HEADER).
+ */
+export function runWithApiKey<T>(key: string | null, fn: () => Promise<T>, tool: string | null = null): Promise<T> {
+  return callContext.run({ key, tool }, fn);
 }
 
 export function getApiKey(): string | null {
-  return keyContext.getStore() ?? null;
+  return callContext.getStore()?.key ?? null;
+}
+
+/** Header values are ASCII, one line, at most 200 chars (what the gateway keeps). */
+function headerSafe(value: string): string {
+  return value.replace(/[^\x20-\x7E]/g, "?").slice(0, 200);
 }
 
 export async function callApi<T>(
@@ -66,9 +79,12 @@ export async function callApi<T>(
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
     apiKey?: string;
+    /** Overrides the call context's tool name, e.g. to add the operation a generic call runs. */
+    mcpTool?: string;
   } = {}
 ): Promise<ApiResponse<T>> {
   const { method = "GET", body, apiKey } = options;
+  const tool = options.mcpTool ?? callContext.getStore()?.tool ?? null;
   const key = apiKey || getApiKey();
 
   if (!key) {
@@ -81,6 +97,7 @@ export async function callApi<T>(
       headers: {
         "Content-Type": "application/json",
         ...MCP_CLIENT_HEADERS,
+        ...(tool ? { [MCP_TOOL_HEADER]: headerSafe(tool) } : {}),
         Authorization: `Bearer ${key}`,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,

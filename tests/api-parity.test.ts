@@ -141,14 +141,18 @@ describe("distribute_call_api", () => {
       body: { dailyBudgetCents: 1000 },
       orgId: "o1",
     })) as Record<string, unknown>;
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/brands/b1/daily-budget?orgId=o1", { method: "PATCH", body: { dailyBudgetCents: 1000 } });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/brands/b1/daily-budget?orgId=o1", {
+      method: "PATCH",
+      body: { dailyBudgetCents: 1000 },
+      mcpTool: "distribute_call_api PATCH /v1/brands/{brandId}/daily-budget",
+    });
     expect(res).toEqual({ operation: "PATCH /v1/brands/{brandId}/daily-budget", status: 200, data: { ok: true } });
   });
 
   it("merges an inline query string with `query` and adds the brand target", async () => {
     mockCallApi.mockResolvedValue({ data: { emails: [] }, status: 200 });
     await handleToolCall("distribute_call_api", { method: "GET", path: "/v1/emails?limit=5", query: { offset: 10 }, brandId: "b1" });
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/emails?limit=5&offset=10&brandId=b1", { method: "GET", body: undefined });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/emails?limit=5&offset=10&brandId=b1", { method: "GET", body: undefined, mcpTool: "distribute_call_api GET /v1/emails" });
   });
 
   it("refuses a path the gateway does not serve to customers, and says where to look", async () => {

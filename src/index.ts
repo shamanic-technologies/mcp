@@ -100,7 +100,7 @@ app.post("/mcp", async (req: Request, res: Response) => {
             // The call runs under THIS session's key, bound to its own async
             // context: concurrent sessions never see each other's key.
             const session = sessions.get(sessionId!);
-            const result = await runWithApiKey(session?.apiKey ?? null, () => handleToolCall(name, args));
+            const result = await runWithApiKey(session?.apiKey ?? null, () => handleToolCall(name, args), name);
             return {
               content: [
                 {

@@ -1081,6 +1081,8 @@ async function handleCallApi(args: Record<string, unknown>) {
   const result = await callApi<unknown>(`${pathOnly}${qs ? `?${qs}` : ""}`, {
     method,
     body: method === "GET" || method === "DELETE" ? undefined : (args.body ?? {}),
+    // The staff Unibox shows which operation a generic call ran, not only "call_api".
+    mcpTool: `distribute_call_api ${match.operation.method} ${match.operation.path}`,
   });
   if (result.error) {
     throw new Error(JSON.stringify({ status: result.status ?? null, ...(result.errorBody ?? { error: result.error }) }));
