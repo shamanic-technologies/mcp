@@ -402,18 +402,19 @@ describe("plain words land the account operations a staff agent asks for", () =>
   const DOC2 = {
     paths: {
       "/v1/orgs/{orgId}/invitations": {
-        post: op("Invite a person to the organization", { tag: "Organization", operationId: "invite" }),
-        get: op("List the organization's pending invitations", { tag: "Organization", operationId: "listInvites" }),
+        post: op("Invite a person to the organization by email", { tag: "Organization", operationId: "invite" }),
+        get: op("List pending invitations of the organization", { tag: "Organization", operationId: "listInvites" }),
       },
       "/v1/orgs/{orgId}/invitations/{id}": { delete: op("Revoke an invitation", { tag: "Organization", operationId: "revokeInvite" }) },
       "/v1/conversations": { get: op("Read the messages exchanged with a lead on a campaign", { tag: "Conversations", operationId: "readConversation" }) },
-      "/v1/conversations/replies": { post: op("Reply to a lead in the email thread", { tag: "Conversations", operationId: "replyThread" }) },
-      "/v1/leads": { get: op("List leads", { tag: "Leads", operationId: "listLeads" }) },
-      "/v1/leads/by-email": { get: op("Find a lead by email", { tag: "Leads", operationId: "leadByEmail" }) },
+      "/v1/replies": { post: op("Reply to a person in their existing email thread", { tag: "Replies", operationId: "replyThread" }) },
+      "/v1/leads": { get: op("List or search a brand's leads (find a lead by email, name or company)", { tag: "Leads", operationId: "leadByEmail" }) },
+      "/v1/me": { get: op("Who am I acting as", { tag: "User", operationId: "me" }) },
+      "/v1/me/openapi.json": { get: op("The API document for this key", { tag: "User", operationId: "meDoc" }) },
       "/v1/emails": { get: op("List generated emails by brand", { tag: "Emails", operationId: "listEmails" }) },
       "/v1/billing/credits/grants": { get: op("Get the org's own credit-grants ledger", { tag: "Billing", operationId: "grantsLedger" }) },
-      "/v1/staff/orgs": { post: { ...op("Create an organization", { tag: "Staff (key)", operationId: "createOrg" }), "x-staff-only": true } },
-      "/v1/staff/orgs/{orgId}/credit-grants": { post: { ...op("Grant free credit", { tag: "Staff (key)", operationId: "grantCredit" }), "x-staff-only": true } },
+      "/v1/staff/orgs": { post: { ...op("Create an organization for a new client (staff only)", { tag: "Staff (key)", operationId: "createOrg" }), "x-staff-only": true } },
+      "/v1/billing/credits/grant": { post: { ...op("Grant free credit to an organization (staff only)", { tag: "Staff (key)", operationId: "grantCredit" }), "x-staff-only": true } },
     },
   };
   const top = (q: string) => {
@@ -424,7 +425,7 @@ describe("plain words land the account operations a staff agent asks for", () =>
 
   it.each([
     ["invite a person to the organization", "invite"],
-    ["list invites", "listInvites"],
+    ["list pending invitations", "listInvites"],
     ["revoke an invite", "revokeInvite"],
     ["create an organization", "createOrg"],
     ["grant free credit to an organization", "grantCredit"],
