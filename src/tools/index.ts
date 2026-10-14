@@ -320,7 +320,7 @@ export const toolDefinitions = {
       "Pass `leadId`: either a lead's `id` from distribute_list_leads (this lead on one campaign), or the person's id: " +
       "a list row's `leadId`, or the `ranLeads[].leadId` a trigger event (POST /v1/trigger-events) answers. " +
       "With the person's id, also pass `campaignId` (the `ranLeads[].campaignId` beside it, or a lead's `campaignId`) or brandId, " +
-      "so the lead is found on that campaign; the answer's `lead.id` is then the lead's `id`. The older name `lead_id` still works. " +
+      "so the lead is read directly on that campaign (with only a brandId, among the brand's newest 1,000 leads); the answer's `lead.id` is then the lead's `id`. The older name `lead_id` still works. " +
       TARGET_HINT,
     schema: z.object({
       leadId: z.string().optional().describe("A lead's `id` from distribute_list_leads, or the person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`). Required (or `lead_id`)."),
@@ -1202,23 +1202,21 @@ async function handleListEmails(args: Record<string, unknown>) {
   };
 }
 
-/** How many pages of 200 a person's id is looked for in, before saying where to look instead. */
+/** How many pages of 200 a person's id is looked for in a BRAND's leads (no campaign named), before saying where to look instead. */
 export const PERSON_LOOKUP_MAX_PAGES = 5;
 
 /**
  * Two ids name a lead (lead-service): a list row's `id` is the person ON ONE CAMPAIGN (what
  * `GET /v1/leads/{id}` reads), its `leadId` is the PERSON (what a trigger event's `ranLeads[].leadId`,
- * an email and a timeline name). The gateway reads a lead by the first only, so a person's id is
- * looked up in the campaign's (or brand's) newest leads, then read by its row `id`.
+ * an email and a timeline name). With a campaign, the gateway reads the person's row on it directly
+ * (`GET /v1/campaigns/{campaignId}/leads/by-lead/{leadId}`); with only a brand, no direct read
+ * exists, so the person is looked up in the brand's newest leads, then read by its row `id`.
  */
-async function leadRowIdOfPerson(personId: string, args: Record<string, unknown>): Promise<{ id: string; others: string[] } | null> {
-  const campaignId = typeof args.campaignId === "string" && args.campaignId ? args.campaignId : null;
-  const brandId = typeof args.brandId === "string" && args.brandId ? args.brandId : null;
-  if (!campaignId && !brandId) return null;
+async function leadRowIdOfPersonInBrand(personId: string, brandId: string, args: Record<string, unknown>): Promise<{ id: string; others: string[] } | null> {
   const found: string[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < PERSON_LOOKUP_MAX_PAGES; page++) {
-    const params = new URLSearchParams({ ...(campaignId ? { campaignId } : {}), ...(brandId ? { brandId } : {}), view: "compact", status: "all", limit: "200" });
+    const params = new URLSearchParams({ brandId, view: "compact", status: "all", limit: "200" });
     if (cursor) params.set("cursor", cursor);
     const list = await callApi<{ leads: Array<Record<string, unknown>>; nextCursor?: string | null }>(
       withTarget(`/v1/leads?${params}`, { orgId: args.orgId }),
@@ -1234,13 +1232,31 @@ async function leadRowIdOfPerson(personId: string, args: Record<string, unknown>
 
 async function handleGetLead(args: Record<string, unknown>) {
   const given = idArg(args, "leadId", "lead_id");
+  const campaignArg = typeof args.campaignId === "string" && args.campaignId.trim() ? args.campaignId.trim() : null;
+  const brandArg = typeof args.brandId === "string" && args.brandId ? args.brandId : null;
   const read = (id: string) => callApi<{ leadDetail: Record<string, unknown> }>(withTarget(`/v1/leads/${encodeURIComponent(id)}`, args));
   let one = await read(given);
   let viaPerson: { id: string; others: string[] } | null = null;
+  let notOnCampaign = false;
   // 404: not a lead row id; 400: not even shaped like one. Either way it may be the person's id.
   if (one.error && (one.status === 404 || one.status === 400)) {
-    viaPerson = await leadRowIdOfPerson(given, args);
-    if (viaPerson) one = await read(viaPerson.id);
+    if (campaignArg) {
+      const byPerson = await callApi<{ leadDetail: Record<string, unknown> }>(
+        withTarget(`/v1/campaigns/${encodeURIComponent(campaignArg)}/leads/by-lead/${encodeURIComponent(given)}`, args),
+      );
+      if (!byPerson.error) {
+        one = byPerson;
+        const rowId = (byPerson.data as { leadDetail: Record<string, unknown> }).leadDetail?.id;
+        viaPerson = { id: typeof rowId === "string" ? rowId : "?", others: [] };
+      } else if (byPerson.status === 404) {
+        notOnCampaign = true;
+      } else if (byPerson.status !== 400) {
+        failWith(byPerson);
+      }
+    } else if (brandArg) {
+      viaPerson = await leadRowIdOfPersonInBrand(given, brandArg, args);
+      if (viaPerson) one = await read(viaPerson.id);
+    }
   }
   if (one.error) {
     if (one.status === 404 || one.status === 400) {
@@ -1248,9 +1264,11 @@ async function handleGetLead(args: Record<string, unknown>) {
         `No lead ${given} here. distribute_get_lead takes a lead's \`id\` from distribute_list_leads, ` +
           "or a person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`) together with `campaignId` " +
           "(the `ranLeads[].campaignId` beside it) or brandId. " +
-          (args.campaignId || args.brandId
-            ? `This person is not among the newest ${PERSON_LOOKUP_MAX_PAGES * 200} leads of that ${args.campaignId ? "campaign" : "brand"}. `
-            : "") +
+          (notOnCampaign
+            ? "This person is not a lead of that campaign: if you just pushed them, the campaign has not picked them up yet. "
+            : !campaignArg && brandArg
+              ? `This person is not among the newest ${PERSON_LOOKUP_MAX_PAGES * 200} leads of that brand; pass the \`campaignId\` they are on to read them directly. `
+              : "") +
           TARGET_HINT,
       );
     }
