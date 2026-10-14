@@ -236,7 +236,7 @@
         }
       },
       "distribute_list_campaigns": {
-        "description": "List the campaigns of one brand or organization. A campaign is one sales funnel run for one offer of a brand, started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no max budget spends nothing. Report each campaign by its name. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "List the campaigns of one brand or organization. A campaign is one sales funnel run for one offer of a brand, started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no max budget spends nothing. Report each campaign by its name. Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; \"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead found → Sales Cold Email Outreach → Positive reply → Paid client\"). Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask (e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_campaigns",
           "definitions": {
@@ -268,16 +268,20 @@
         }
       },
       "distribute_campaign_stats": {
-        "description": "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "Get one campaign's results: pass `campaignId`, the campaign id from distribute_list_campaigns (the older name `campaign_id` still works). A campaign runs as one; its results come in `results`, one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_campaign_stats",
           "definitions": {
             "distribute_campaign_stats": {
               "type": "object",
               "properties": {
+                "campaignId": {
+                  "type": "string",
+                  "description": "Campaign id, from distribute_list_campaigns. Required (or `campaign_id`)."
+                },
                 "campaign_id": {
                   "type": "string",
-                  "description": "Campaign id, from distribute_list_campaigns"
+                  "description": "Older name of `campaignId`, still accepted. Prefer `campaignId`."
                 },
                 "brandId": {
                   "type": "string",
@@ -288,9 +292,6 @@
                   "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                 }
               },
-              "required": [
-                "campaign_id"
-              ],
               "additionalProperties": false
             }
           },
@@ -348,7 +349,7 @@
         }
       },
       "distribute_list_leads": {
-        "description": "List the leads (prospects, people we found and contacted) of a brand, newest first, with where each one stands: contacted, sent, delivered, clicked, replied (and how the reply was classified), bounced, unsubscribed, with dates. Each lead carries an `id` to pass to distribute_get_lead for its emails and conversation. Pages with `cursor`: pass the `nextCursor` of the previous page. `total` is the brand's lead count. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "List the leads (prospects, people we found and contacted) of a brand, newest first, with where each one stands: contacted, sent, delivered, clicked, replied (and how the reply was classified), bounced, unsubscribed, with dates. Each lead carries an `id` (this lead on one campaign) to pass to distribute_get_lead for its emails and conversation, and a `leadId` (the person, the id trigger events and emails name; distribute_get_lead takes it too). Pages with `cursor`: pass the `nextCursor` of the previous page. `total` is the brand's lead count. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_leads",
           "definitions": {
@@ -429,16 +430,24 @@
         }
       },
       "distribute_get_lead": {
-        "description": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Take `lead_id` from distribute_list_leads (`id`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Pass `leadId`: either a lead's `id` from distribute_list_leads (this lead on one campaign), or the person's id: a list row's `leadId`, or the `ranLeads[].leadId` a trigger event (POST /v1/trigger-events) answers. With the person's id, also pass `campaignId` (the `ranLeads[].campaignId` beside it, or a lead's `campaignId`) or brandId, so the lead is found on that campaign; the answer's `lead.id` is then the lead's `id`. The older name `lead_id` still works. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_get_lead",
           "definitions": {
             "distribute_get_lead": {
               "type": "object",
               "properties": {
+                "leadId": {
+                  "type": "string",
+                  "description": "A lead's `id` from distribute_list_leads, or the person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`). Required (or `lead_id`)."
+                },
                 "lead_id": {
                   "type": "string",
-                  "description": "The lead's `id`, from distribute_list_leads."
+                  "description": "Older name of `leadId`, still accepted. Prefer `leadId`."
+                },
+                "campaignId": {
+                  "type": "string",
+                  "description": "With a person's id: the campaign step they are on (`ranLeads[].campaignId` of the trigger event, or a lead's `campaignId`)."
                 },
                 "brandId": {
                   "type": "string",
@@ -449,9 +458,6 @@
                   "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                 }
               },
-              "required": [
-                "lead_id"
-              ],
               "additionalProperties": false
             }
           },
@@ -1200,7 +1206,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List the campaigns of one brand or organization. A campaign is one sales funnel run for one offer of a brand, started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no max budget spends nothing. Report each campaign by its name. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "List the campaigns of one brand or organization. A campaign is one sales funnel run for one offer of a brand, started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no max budget spends nothing. Report each campaign by its name. Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; \"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead found → Sales Cold Email Outreach → Positive reply → Paid client\"). Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask (e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_list_campaigns. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_campaigns\".",
         "requestBody": {
           "content": {
@@ -1267,7 +1273,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "Get one campaign's results: pass `campaignId`, the campaign id from distribute_list_campaigns (the older name `campaign_id` still works). A campaign runs as one; its results come in `results`, one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_campaign_stats. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_campaign_stats\".",
         "requestBody": {
           "content": {
@@ -1275,9 +1281,13 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "campaignId": {
+                    "type": "string",
+                    "description": "Campaign id, from distribute_list_campaigns. Required (or `campaign_id`)."
+                  },
                   "campaign_id": {
                     "type": "string",
-                    "description": "Campaign id, from distribute_list_campaigns"
+                    "description": "Older name of `campaignId`, still accepted. Prefer `campaignId`."
                   },
                   "brandId": {
                     "type": "string",
@@ -1288,9 +1298,6 @@
                     "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                   }
                 },
-                "required": [
-                  "campaign_id"
-                ],
                 "additionalProperties": false
               }
             }
@@ -1452,7 +1459,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List the leads (prospects, people we found and contacted) of a brand, newest first, with where each one stands: contacted, sent, delivered, clicked, replied (and how the reply was classified), bounced, unsubscribed, with dates. Each lead carries an `id` to pass to distribute_get_lead for its emails and conversation. Pages with `cursor`: pass the `nextCursor` of the previous page. `total` is the brand's lead count. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "List the leads (prospects, people we found and contacted) of a brand, newest first, with where each one stands: contacted, sent, delivered, clicked, replied (and how the reply was classified), bounced, unsubscribed, with dates. Each lead carries an `id` (this lead on one campaign) to pass to distribute_get_lead for its emails and conversation, and a `leadId` (the person, the id trigger events and emails name; distribute_get_lead takes it too). Pages with `cursor`: pass the `nextCursor` of the previous page. `total` is the brand's lead count. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_list_leads. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_leads\".",
         "requestBody": {
           "content": {
@@ -1603,7 +1610,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Take `lead_id` from distribute_list_leads (`id`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Pass `leadId`: either a lead's `id` from distribute_list_leads (this lead on one campaign), or the person's id: a list row's `leadId`, or the `ranLeads[].leadId` a trigger event (POST /v1/trigger-events) answers. With the person's id, also pass `campaignId` (the `ranLeads[].campaignId` beside it, or a lead's `campaignId`) or brandId, so the lead is found on that campaign; the answer's `lead.id` is then the lead's `id`. The older name `lead_id` still works. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_get_lead. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_get_lead\".",
         "requestBody": {
           "content": {
@@ -1611,9 +1618,17 @@
               "schema": {
                 "type": "object",
                 "properties": {
+                  "leadId": {
+                    "type": "string",
+                    "description": "A lead's `id` from distribute_list_leads, or the person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`). Required (or `lead_id`)."
+                  },
                   "lead_id": {
                     "type": "string",
-                    "description": "The lead's `id`, from distribute_list_leads."
+                    "description": "Older name of `leadId`, still accepted. Prefer `leadId`."
+                  },
+                  "campaignId": {
+                    "type": "string",
+                    "description": "With a person's id: the campaign step they are on (`ranLeads[].campaignId` of the trigger event, or a lead's `campaignId`)."
                   },
                   "brandId": {
                     "type": "string",
@@ -1624,9 +1639,6 @@
                     "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
                   }
                 },
-                "required": [
-                  "lead_id"
-                ],
                 "additionalProperties": false
               }
             }

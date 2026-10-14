@@ -472,6 +472,64 @@ describe("one lead", () => {
   });
 });
 
+/**
+ * MCP role-play 2026-10-14: a trigger event (POST /v1/trigger-events) names the person's lead in
+ * `ranLeads[].leadId`, and get_lead answered "No lead ... here". That id is the PERSON (a list row's
+ * `leadId`); GET /v1/leads/{id} reads the person ON ONE CAMPAIGN (a list row's `id`).
+ */
+describe("one lead, from the id a trigger event hands back", () => {
+  const detail = { id: "row-9", leadId: "person-1", email: "a@b.co", campaignId: "u-push", brandIds: ["b1"], lead: { name: "Ann" } };
+  function routeLead(listed: Array<Record<string, unknown>>) {
+    mockCallApi.mockImplementation(async (path: string) => {
+      if (path.startsWith("/v1/leads/row-9")) return { data: { leadDetail: detail }, status: 200 };
+      if (path.startsWith("/v1/leads/")) return { error: "Lead not found", status: 404, errorBody: { error: "Lead not found" } };
+      if (path.startsWith("/v1/leads?")) return { data: { leads: listed, nextCursor: null }, status: 200 };
+      if (path.startsWith("/v1/emails/by-lead/")) return { data: { generation: null }, status: 200 };
+      if (path.startsWith("/v1/conversations")) return { data: { conversation: { messages: [] } }, status: 200 };
+      throw new Error(`unexpected ${path}`);
+    });
+  }
+
+  it("finds the lead by the person's id on the campaign named beside it", async () => {
+    routeLead([{ id: "row-other", leadId: "person-2", campaignId: "u-push" }, { id: "row-9", leadId: "person-1", campaignId: "u-push" }]);
+
+    const res = (await handleToolCall("distribute_get_lead", { leadId: "person-1", campaignId: "u-push", orgId: "o1" })) as Record<string, any>;
+
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/leads?campaignId=u-push&view=compact&status=all&limit=200&orgId=o1");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/leads/row-9?orgId=o1");
+    expect(res.lead).toMatchObject({ id: "row-9", email: "a@b.co" });
+    expect(res.note).toContain("person-1 is the person's id");
+    expect(res.note).toContain("lead id row-9");
+  });
+
+  it("reads a lead row id directly, under `leadId` or the older `lead_id`", async () => {
+    routeLead([]);
+    const camel = (await handleToolCall("distribute_get_lead", { leadId: "row-9" })) as Record<string, any>;
+    const snake = (await handleToolCall("distribute_get_lead", { lead_id: "row-9" })) as Record<string, any>;
+    expect(camel.lead.id).toBe("row-9");
+    expect(camel).not.toHaveProperty("note");
+    expect(snake).toEqual(camel);
+    expect(mockCallApi.mock.calls.some(([p]) => String(p).startsWith("/v1/leads?"))).toBe(false);
+  });
+
+  it("says which id it takes and where to get it, when the person id comes with no campaign", async () => {
+    routeLead([]);
+    await expect(handleToolCall("distribute_get_lead", { leadId: "person-1" })).rejects.toThrow("ranLeads[].campaignId");
+  });
+
+  it("says the person is not among the campaign's newest leads when the lookup finds nothing", async () => {
+    routeLead([{ id: "row-other", leadId: "person-2", campaignId: "u-push" }]);
+    await expect(handleToolCall("distribute_get_lead", { leadId: "person-1", campaignId: "u-push" })).rejects.toThrow(
+      "not among the newest 1000 leads of that campaign",
+    );
+  });
+
+  it("says both ids apart in the descriptions", () => {
+    expect(toolDefinitions.distribute_get_lead.description).toContain("ranLeads[].leadId");
+    expect(toolDefinitions.distribute_list_leads.description).toContain("distribute_get_lead takes it too");
+  });
+});
+
 describe("tool names say what they are for", () => {
   it("exposes the curated jobs and the generic trio", () => {
     for (const name of ["distribute_list_leads", "distribute_list_emails", "distribute_get_lead", "distribute_find_api", "distribute_describe_api", "distribute_call_api"]) {

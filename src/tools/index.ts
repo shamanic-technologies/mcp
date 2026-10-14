@@ -48,6 +48,19 @@ function withTarget(path: string, args: Record<string, unknown>): string {
 }
 
 /**
+ * An id the caller may send under the camelCase name every other tool and the API use, or under
+ * the older snake_case name existing callers send (2026-10-14: an agent's first call failed on
+ * `campaignId` / `leadId` every time). camelCase wins when both are sent; neither is a clear refusal.
+ */
+export function idArg(args: Record<string, unknown>, camel: string, snake: string): string {
+  for (const k of [camel, snake]) {
+    const v = args[k];
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  throw new Error(`Missing \`${camel}\` (the older name \`${snake}\` also works).`);
+}
+
+/**
  * Throw the gateway's refusal as-is. A body carrying a `code` (org_target_required,
  * brand_in_several_orgs, org_not_member, ...) is serialized whole, so the client
  * reads `code`, `message`, `fix` and `organizations` rather than a bare word.
@@ -224,6 +237,10 @@ export const toolDefinitions = {
       "a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), " +
       "and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. " +
       "A campaign with no max budget spends nothing. Report each campaign by its name. " +
+      "Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; " +
+      "\"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead found → Sales Cold Email Outreach → Positive reply → Paid client\"). " +
+      "Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask " +
+      "(e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). " +
       TARGET_HINT,
     schema: z.object({
       ...targetShape,
@@ -232,7 +249,7 @@ export const toolDefinitions = {
   },
   distribute_campaign_stats: {
     description:
-      "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, " +
+      "Get one campaign's results: pass `campaignId`, the campaign id from distribute_list_campaigns (the older name `campaign_id` still works). A campaign runs as one; its results come in `results`, " +
       "one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). " +
       "An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. " +
       "Report the campaign by its name and never call an entry of `results` a campaign. " +
@@ -241,7 +258,8 @@ export const toolDefinitions = {
       "Show zeros plainly (0 meetings is still reported). " +
       TARGET_HINT,
     schema: z.object({
-      campaign_id: z.string().describe("Campaign id, from distribute_list_campaigns"),
+      campaignId: z.string().optional().describe("Campaign id, from distribute_list_campaigns. Required (or `campaign_id`)."),
+      campaign_id: z.string().optional().describe("Older name of `campaignId`, still accepted. Prefer `campaignId`."),
       ...targetShape,
     }),
   },
@@ -266,7 +284,8 @@ export const toolDefinitions = {
     description:
       "List the leads (prospects, people we found and contacted) of a brand, newest first, with where each one stands: " +
       "contacted, sent, delivered, clicked, replied (and how the reply was classified), bounced, unsubscribed, with dates. " +
-      "Each lead carries an `id` to pass to distribute_get_lead for its emails and conversation. " +
+      "Each lead carries an `id` (this lead on one campaign) to pass to distribute_get_lead for its emails and conversation, " +
+      "and a `leadId` (the person, the id trigger events and emails name; distribute_get_lead takes it too). " +
       "Pages with `cursor`: pass the `nextCursor` of the previous page. `total` is the brand's lead count. " +
       TARGET_HINT,
     schema: z.object({
@@ -298,10 +317,15 @@ export const toolDefinitions = {
     description:
       "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them " +
       "(first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). " +
-      "Take `lead_id` from distribute_list_leads (`id`). " +
+      "Pass `leadId`: either a lead's `id` from distribute_list_leads (this lead on one campaign), or the person's id: " +
+      "a list row's `leadId`, or the `ranLeads[].leadId` a trigger event (POST /v1/trigger-events) answers. " +
+      "With the person's id, also pass `campaignId` (the `ranLeads[].campaignId` beside it, or a lead's `campaignId`) or brandId, " +
+      "so the lead is found on that campaign; the answer's `lead.id` is then the lead's `id`. The older name `lead_id` still works. " +
       TARGET_HINT,
     schema: z.object({
-      lead_id: z.string().describe("The lead's `id`, from distribute_list_leads."),
+      leadId: z.string().optional().describe("A lead's `id` from distribute_list_leads, or the person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`). Required (or `lead_id`)."),
+      lead_id: z.string().optional().describe("Older name of `leadId`, still accepted. Prefer `leadId`."),
+      campaignId: z.string().optional().describe("With a person's id: the campaign step they are on (`ranLeads[].campaignId` of the trigger event, or a lead's `campaignId`)."),
       ...targetShape,
     }),
   },
@@ -683,8 +707,9 @@ async function handleListCampaigns(args: Record<string, unknown>) {
   if (result.error) failWith(result);
 
   const listed = (result.data as { salesFunnelCampaigns: FunnelCampaign[] }).salesFunnelCampaigns;
+  const copies = await campaignCopies(listed, args);
 
-  // A projection: name, status, limits. Parts are not listed (they are not campaigns).
+  // A projection: name, status, what starts it and what it does, limits. Parts are not listed (they are not campaigns).
   const campaigns = await Promise.all(
     listed.map(async (c) => ({
       id: c.id,
@@ -693,12 +718,68 @@ async function handleListCampaigns(args: Record<string, unknown>) {
       stopReason: c.stopReason ?? null,
       brandId: c.brandId,
       offerId: c.offerId,
+      ...runsWhenOf(copies.get(c.brandId), c.id),
       ...(await funnelCampaignCaps(c, args)),
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
     })),
   );
   return { campaigns };
+}
+
+/** features-service's copy of one campaign (`GET /v1/features/brands/:b/sales-funnel-campaigns?fields=copy`). */
+type CampaignCopy = {
+  id: string;
+  type?: string | null;
+  triggerLabel?: string | null;
+  path?: { items?: Array<{ kind?: string; slug?: string; key?: string; name?: string; label?: string }> } | null;
+};
+type CopiesRead = { rows: Map<string, CampaignCopy> } | { error: string };
+
+/**
+ * What starts each campaign and what it does, as the dashboard's Campaigns table shows it: one cheap
+ * read per brand (`fields=copy`: no money computed). A refused read does not hide the campaigns: each
+ * one of that brand says why `runsWhen` is unknown.
+ */
+async function campaignCopies(listed: FunnelCampaign[], args: Record<string, unknown>): Promise<Map<string, CopiesRead>> {
+  const brands = [...new Set(listed.map((c) => c.brandId))];
+  return new Map(
+    await Promise.all(
+      brands.map(async (b): Promise<[string, CopiesRead]> => {
+        const read = await callApi<{ salesFunnelCampaigns?: CampaignCopy[] }>(
+          withTarget(`/v1/features/brands/${encodeURIComponent(b)}/sales-funnel-campaigns?fields=copy`, { brandId: b, orgId: args.orgId }),
+        );
+        const rows = read.error ? null : (read.data as { salesFunnelCampaigns?: CampaignCopy[] }).salesFunnelCampaigns;
+        if (!Array.isArray(rows)) {
+          const why = read.error ?? "no salesFunnelCampaigns in the answer";
+          console.error("[mcp] campaign copy unreadable", { brandId: b, why });
+          return [b, { error: why }];
+        }
+        return [b, { rows: new Map(rows.map((r) => [r.id, r])) }];
+      }),
+    ),
+  );
+}
+
+/** "Each time: Email Pushed Via API" (reactive) or "On its own, within its caps (no trigger)" (proactive). */
+export function runsWhenOf(read: CopiesRead | undefined, campaignId: string) {
+  const unknown = (reason: string) => ({ runsWhen: null, trigger: null, path: null, runsWhenUnavailableReason: reason });
+  if (!read) return unknown("not read");
+  if ("error" in read) return unknown(`could not be read: ${read.error}`);
+  const copy = read.rows.get(campaignId);
+  if (!copy) return unknown("this campaign is missing from the brand's campaign descriptions");
+  const items = copy.path?.items ?? [];
+  const t = items.find((i) => i.kind === "trigger");
+  const trigger = t && t.slug && t.name ? { slug: t.slug, name: t.name } : null;
+  const label = copy.triggerLabel ?? trigger?.name ?? null;
+  const runsWhen = label ? `Each time: ${label}` : copy.type === "proactive" ? "On its own, within its caps (no trigger)" : null;
+  const path = items.length ? items.map((i) => (i.kind === "step" ? i.label : i.name) ?? "?").join(" → ") : null;
+  return {
+    runsWhen,
+    trigger,
+    path,
+    ...(runsWhen ? {} : { runsWhenUnavailableReason: "no trigger and no type described for this campaign" }),
+  };
 }
 
 type PublicCatalogue = {
@@ -728,7 +809,7 @@ function partNames(catalogue: PublicCatalogue, u: FunnelUnit): { bringsIn: strin
  * and is told which campaign it is, never a dead end and never the part as a campaign.
  */
 async function campaignNamedBy(args: Record<string, unknown>): Promise<{ campaign: FunnelCampaign; viaPart: boolean }> {
-  const given = String(args.campaign_id);
+  const given = idArg(args, "campaignId", "campaign_id");
   const one = await callApi<{ salesFunnelCampaign: FunnelCampaign }>(
     withTarget(`/v1/sales-funnel-campaigns/${encodeURIComponent(given)}`, args),
   );
@@ -1121,11 +1202,58 @@ async function handleListEmails(args: Record<string, unknown>) {
   };
 }
 
+/** How many pages of 200 a person's id is looked for in, before saying where to look instead. */
+export const PERSON_LOOKUP_MAX_PAGES = 5;
+
+/**
+ * Two ids name a lead (lead-service): a list row's `id` is the person ON ONE CAMPAIGN (what
+ * `GET /v1/leads/{id}` reads), its `leadId` is the PERSON (what a trigger event's `ranLeads[].leadId`,
+ * an email and a timeline name). The gateway reads a lead by the first only, so a person's id is
+ * looked up in the campaign's (or brand's) newest leads, then read by its row `id`.
+ */
+async function leadRowIdOfPerson(personId: string, args: Record<string, unknown>): Promise<{ id: string; others: string[] } | null> {
+  const campaignId = typeof args.campaignId === "string" && args.campaignId ? args.campaignId : null;
+  const brandId = typeof args.brandId === "string" && args.brandId ? args.brandId : null;
+  if (!campaignId && !brandId) return null;
+  const found: string[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < PERSON_LOOKUP_MAX_PAGES; page++) {
+    const params = new URLSearchParams({ ...(campaignId ? { campaignId } : {}), ...(brandId ? { brandId } : {}), view: "compact", status: "all", limit: "200" });
+    if (cursor) params.set("cursor", cursor);
+    const list = await callApi<{ leads: Array<Record<string, unknown>>; nextCursor?: string | null }>(
+      withTarget(`/v1/leads?${params}`, { orgId: args.orgId }),
+    );
+    if (list.error) failWith(list);
+    const data = list.data as { leads: Array<Record<string, unknown>>; nextCursor?: string | null };
+    for (const r of data.leads ?? []) if (r.leadId === personId && typeof r.id === "string") found.push(r.id);
+    cursor = data.nextCursor ?? null;
+    if (found.length > 0 || !cursor) break;
+  }
+  return found.length ? { id: found[0]!, others: found.slice(1) } : null;
+}
+
 async function handleGetLead(args: Record<string, unknown>) {
-  const id = encodeURIComponent(String(args.lead_id));
-  const one = await callApi<{ leadDetail: Record<string, unknown> }>(withTarget(`/v1/leads/${id}`, args));
+  const given = idArg(args, "leadId", "lead_id");
+  const read = (id: string) => callApi<{ leadDetail: Record<string, unknown> }>(withTarget(`/v1/leads/${encodeURIComponent(id)}`, args));
+  let one = await read(given);
+  let viaPerson: { id: string; others: string[] } | null = null;
+  // 404: not a lead row id; 400: not even shaped like one. Either way it may be the person's id.
+  if (one.error && (one.status === 404 || one.status === 400)) {
+    viaPerson = await leadRowIdOfPerson(given, args);
+    if (viaPerson) one = await read(viaPerson.id);
+  }
   if (one.error) {
-    if (one.status === 404) throw new Error(`No lead ${String(args.lead_id)} here. Take the lead id from distribute_list_leads (\`id\`). ${TARGET_HINT}`);
+    if (one.status === 404 || one.status === 400) {
+      throw new Error(
+        `No lead ${given} here. distribute_get_lead takes a lead's \`id\` from distribute_list_leads, ` +
+          "or a person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`) together with `campaignId` " +
+          "(the `ranLeads[].campaignId` beside it) or brandId. " +
+          (args.campaignId || args.brandId
+            ? `This person is not among the newest ${PERSON_LOOKUP_MAX_PAGES * 200} leads of that ${args.campaignId ? "campaign" : "brand"}. `
+            : "") +
+          TARGET_HINT,
+      );
+    }
     failWith(one);
   }
   const row = (one.data as { leadDetail: Record<string, unknown> }).leadDetail;
@@ -1162,6 +1290,13 @@ async function handleGetLead(args: Record<string, unknown>) {
   const generation = written.error ? null : ((written.data as { generation: Record<string, unknown> | null }).generation ?? null);
   const records = generation && brandId && leadId ? await sendRecordsFor(brandId, args.orgId, new Set([leadId])) : null;
   return {
+    ...(viaPerson
+      ? {
+          note:
+            `${given} is the person's id; this is them on campaign ${String(row.campaignId ?? "?")}, lead id ${viaPerson.id}.` +
+            (viaPerson.others.length ? ` They are on other campaigns too, as leads ${viaPerson.others.join(", ")}.` : ""),
+        }
+      : {}),
     lead: leadForAssistant(row),
     emailsWritten: generation ? emailForAssistant(records ? withSendStatus(generation, records) : generation) : null,
     ...(records?.error ? { sendStatusUnavailable: records.error } : {}),

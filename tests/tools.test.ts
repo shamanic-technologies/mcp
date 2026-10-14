@@ -222,11 +222,29 @@ function routeApi(table: Record<string, unknown>) {
   });
 }
 
+// features-service's copy of the brand's campaigns (`?fields=copy`), as the dashboard's Campaigns table reads it.
+const copyPath = "/v1/features/brands/b1/sales-funnel-campaigns";
+const blissCopy = {
+  id: "sfc-bliss",
+  type: "proactive",
+  triggerLabel: null,
+  path: {
+    items: [
+      { kind: "step", key: "start", label: "Start" },
+      { kind: "channel", slug: "sourcing-apollo-cold-filters", name: "Apollo Cold Filters", runByUs: true },
+      { kind: "step", key: "lead_found", label: "Lead found" },
+      { kind: "channel", slug: "sales-cold-email-outreach", name: "Sales Cold Email Outreach", runByUs: true },
+      { kind: "step", key: "conversation", label: "Positive reply" },
+    ],
+  },
+};
+const copies = (...rows: unknown[]) => ({ brandId: "b1", fields: "copy", salesFunnelCampaigns: rows });
+
 describe("distribute_list_campaigns lists campaigns, never their parts", () => {
   const capsPath = `/v1/brands/b1/offers/off1/sales-funnels/${encodeURIComponent(bliss.salesFunnelId)}/caps`;
 
   it("names each campaign, with its type and limits in words", async () => {
-    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: blissCaps });
+    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: blissCaps, [copyPath]: copies(blissCopy) });
 
     const out = (await handleToolCall("distribute_list_campaigns", { brandId: "b1" })) as { campaigns: Array<Record<string, any>> };
 
@@ -245,7 +263,7 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
   });
 
   it("hands back no part, no part name and no part count", async () => {
-    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: blissCaps });
+    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: blissCaps, [copyPath]: copies(blissCopy) });
 
     const out = await handleToolCall("distribute_list_campaigns", { brandId: "b1" });
     const text = JSON.stringify(out);
@@ -259,6 +277,7 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
   it("says a reactive campaign's limit as an upper bound", async () => {
     routeApi({
       "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] },
+      [copyPath]: copies(blissCopy),
       [capsPath]: {
         ...blissCaps,
         salesFunnelType: "reactive",
@@ -275,12 +294,63 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
   });
 
   it("says when no budget is set", async () => {
-    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: { ...blissCaps, stated: false, maxBudget: null } });
+    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: { ...blissCaps, stated: false, maxBudget: null }, [copyPath]: copies(blissCopy) });
 
     const out = (await handleToolCall("distribute_list_campaigns", {})) as { campaigns: Array<Record<string, any>> };
 
     expect(out.campaigns[0]!.budget).toBeNull();
     expect(out.campaigns[0]!.noBudgetSet).toBe(true);
+  });
+
+  // MCP role-play 2026-10-14: asked to "send one email I wrote", the agent could not tell from this list that a
+  // running campaign already does exactly that, each time "Email Pushed Via API" fires.
+  it("says what starts a reactive campaign (its trigger) and what it does", async () => {
+    const push = { ...bliss, id: "sfc-push", salesFunnelId: "push", salesFunnelName: "Crest", units: [] };
+    const pushCaps = `/v1/brands/b1/offers/off1/sales-funnels/push/caps`;
+    routeApi({
+      "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss, push] },
+      [capsPath]: blissCaps,
+      [pushCaps]: { ...blissCaps, salesFunnelType: "reactive" },
+      [copyPath]: copies(blissCopy, {
+        id: "sfc-push",
+        type: "reactive",
+        triggerLabel: "Email Pushed Via API",
+        path: {
+          items: [
+            { kind: "trigger", slug: "email-pushed-via-api", name: "Email Pushed Via API" },
+            { kind: "channel", slug: "ai-email", name: "AI Follow-up Email", runByUs: true },
+            { kind: "step", key: "conversation", label: "Positive reply" },
+          ],
+        },
+      }),
+    });
+
+    const out = (await handleToolCall("distribute_list_campaigns", { brandId: "b1" })) as { campaigns: Array<Record<string, any>> };
+
+    const [daily, pushed] = out.campaigns;
+    expect(daily!.runsWhen).toBe("On its own, within its caps (no trigger)");
+    expect(daily!.trigger).toBeNull();
+    expect(daily!.path).toBe("Start → Apollo Cold Filters → Lead found → Sales Cold Email Outreach → Positive reply");
+    expect(pushed!.runsWhen).toBe("Each time: Email Pushed Via API");
+    expect(pushed!.trigger).toEqual({ slug: "email-pushed-via-api", name: "Email Pushed Via API" });
+    expect(pushed!.path).toBe("Email Pushed Via API → AI Follow-up Email → Positive reply");
+    // One copy read per brand, the cheap one (no money computed), targeted at that brand.
+    expect(mockCallApi).toHaveBeenCalledWith(`${copyPath}?fields=copy&brandId=b1`);
+    expect(mockCallApi.mock.calls.filter(([p]) => String(p).startsWith(copyPath))).toHaveLength(1);
+  });
+
+  it("still lists the campaigns when what starts them cannot be read, and says why", async () => {
+    mockCallApi.mockImplementation(async (path: string) => {
+      if (path.startsWith(copyPath)) return { error: "Failed to get brand sales funnel campaigns", status: 502 };
+      if (path.startsWith(capsPath)) return { data: blissCaps };
+      return { data: { salesFunnelCampaigns: [bliss] } };
+    });
+
+    const out = (await handleToolCall("distribute_list_campaigns", { brandId: "b1" })) as { campaigns: Array<Record<string, any>> };
+
+    expect(out.campaigns[0]!.name).toBe("Bliss");
+    expect(out.campaigns[0]!.runsWhen).toBeNull();
+    expect(out.campaigns[0]!.runsWhenUnavailableReason).toContain("Failed to get brand sales funnel campaigns");
   });
 
   it("fails loudly when a campaign's limits cannot be read", async () => {
@@ -472,6 +542,25 @@ describe("distribute_campaign_stats reads success first", () => {
     expect(text).not.toContain("u-email");
     expect(text).not.toContain("u-apollo");
     expect(text).not.toContain("NOVEMIQ (Positive replies");
+  });
+
+  // MCP role-play 2026-10-14: every other tool and the API say `campaignId`; the agent's first call here failed each time.
+  it("takes the campaign as `campaignId`, like every other tool, and still as `campaign_id`", async () => {
+    routeApi({ "/v1/sales-funnel-campaigns/c1": { salesFunnelCampaign: { ...bliss, id: "c1", units: [] } }, "/v1/public/channels": catalogue });
+
+    const camel = (await handleToolCall("distribute_campaign_stats", { campaignId: "c1" })) as Record<string, any>;
+    const snake = (await handleToolCall("distribute_campaign_stats", { campaign_id: "c1" })) as Record<string, any>;
+
+    expect(camel.campaign.id).toBe("c1");
+    expect(snake).toEqual(camel);
+    const schema = toolDefinitions.distribute_campaign_stats.schema;
+    expect(schema.safeParse({ campaignId: "c1" }).success).toBe(true);
+    expect(schema.safeParse({ campaign_id: "c1" }).success).toBe(true);
+  });
+
+  it("names the missing id when neither spelling is sent", async () => {
+    await expect(handleToolCall("distribute_campaign_stats", {})).rejects.toThrow("Missing `campaignId`");
+    expect(mockCallApi).not.toHaveBeenCalled();
   });
 
   it("finds a part stated under the old spelling of its step", async () => {
