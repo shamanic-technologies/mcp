@@ -90,7 +90,7 @@ The whole API, by intent:
 | Tool | What it does |
 |---|---|
 | `distribute_find_api` | Search every API operation by what you want to do, in plain words ("set a campaign's max budget", "account balance") |
-| `distribute_describe_api` | One operation in full: parameters and the JSON body it takes |
+| `distribute_describe_api` | One operation in full: parameters, the JSON body it takes, and `answers`: what a successful call returns (per status, its JSON shape from the gateway's document, bounded; "Not documented" when the gateway states none) |
 | `distribute_call_api` | Call any API operation with your key, reads and writes, answered exactly as the API answers |
 
 **Why generic tools, and why they do not rot.** The three generic tools read the catalogue the API serves for the session's key (`https://api.distribute.you/v1/me/openapi.json`; the public `https://api.distribute.you/openapi.json` with no key or a refused one), checked against the gateway on every call (a HEAD for the document's ETag: the held copy is reused only while it is unchanged), so there is no staleness window. For a client key it lists every customer operation; for a staff user's key it adds the staff operations that key may call, marked `staffOnly`. So it is exactly that key's scope, one key's catalogue never answers another key's session, and a route the API adds is reachable from here on the very next call, with no new release of this server. `distribute_call_api` only calls operations of that catalogue.

@@ -41,6 +41,15 @@ export interface CatalogParam {
   enum?: unknown[];
 }
 
+export interface CatalogResponse {
+  status: string;
+  description: string | null;
+  /** The media type of the answer when it is not JSON (a stream, a file); null for JSON. */
+  contentType: string | null;
+  /** The JSON answer's schema, refs unresolved; null when the document states none. */
+  schema: unknown;
+}
+
 export interface CatalogOperation {
   operationId: string;
   method: HttpMethod;
@@ -51,6 +60,8 @@ export interface CatalogOperation {
   params: CatalogParam[];
   hasBody: boolean;
   bodySchema: unknown;
+  /** What a successful call answers, per 2xx status, as the served document states it (empty: undocumented). */
+  successResponses: CatalogResponse[];
   needsKey: boolean;
   deprecated: boolean;
   /** Served only to a staff user's key (`x-staff-only: true`). The gateway still decides on each call. */
@@ -229,6 +240,7 @@ function compile(doc: Json, now: number): Compiled {
         params,
         hasBody: !!op.requestBody,
         bodySchema: body?.schema ?? null,
+        successResponses: successResponses(op.responses),
         needsKey: Array.isArray(op.security) && op.security.length > 0,
         deprecated: op.deprecated === true,
         staffOnly: op["x-staff-only"] === true,
@@ -236,6 +248,21 @@ function compile(doc: Json, now: number): Compiled {
     }
   }
   return { operations, components: ((doc.components as Json)?.schemas ?? {}) as Json, loadedAt: now };
+}
+
+/** The 2xx answers an operation documents, in status order. A bare `{}` schema states nothing and reads as none. */
+function successResponses(responses: unknown): CatalogResponse[] {
+  if (!responses || typeof responses !== "object") return [];
+  const out: CatalogResponse[] = [];
+  for (const [status, raw] of Object.entries(responses as Record<string, Json>)) {
+    if (!/^2\d\d$/.test(status) || !raw || typeof raw !== "object") continue;
+    const content = (raw.content ?? {}) as Record<string, Json>;
+    const json = content["application/json"];
+    const schema = json?.schema && typeof json.schema === "object" && Object.keys(json.schema as Json).length ? json.schema : null;
+    const other = json ? null : (Object.keys(content)[0] ?? null);
+    out.push({ status, description: typeof raw.description === "string" ? raw.description : null, contentType: other, schema });
+  }
+  return out.sort((a, b) => a.status.localeCompare(b.status));
 }
 
 // ── Search by intent ─────────────────────────────────────────────────────────

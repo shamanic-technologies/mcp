@@ -10,6 +10,7 @@ import {
   isPlatformInternal,
   PLATFORM_INTERNAL_PATHS,
   type HttpMethod,
+  type CatalogOperation,
 } from "../lib/gateway-catalog.js";
 
 /**
@@ -320,7 +321,7 @@ export const toolDefinitions = {
   distribute_describe_api: {
     description:
       "Read one distribute.you API operation in full before calling it: what it does, its path and query parameters (required or not), " +
-      "and the JSON body it takes. Name it by `operationId`, or by `method` and `path`, as distribute_find_api returned them.",
+      "the JSON body it takes, and `answers`: what a successful call returns (per status, the JSON shape with each field's meaning), so you can act on the answer. Name it by `operationId`, or by `method` and `path`, as distribute_find_api returned them.",
     schema: z.object({
       operationId: z.string().optional().describe("Operation id from distribute_find_api."),
       method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).optional(),
@@ -1315,6 +1316,7 @@ async function handleDescribeApi(args: Record<string, unknown>) {
     ...(op.staffOnly ? { staffOnly: "Served to this session because its key is a distribute.you staff key. The gateway checks it again on the call." } : {}),
     parameters: op.params,
     body: op.hasBody ? resolveSchema(op.bodySchema, components) : null,
+    answers: describeAnswers(op, components),
     howToCall: {
       tool: "distribute_call_api",
       method: op.method,
@@ -1322,6 +1324,35 @@ async function handleDescribeApi(args: Record<string, unknown>) {
       targeting: TARGET_HINT,
     },
   };
+}
+
+/** Above this, one success answer's schema is inlined less deep: a huge schema must not flood the context. */
+export const MAX_ANSWER_SCHEMA_CHARS = 12_000;
+
+/**
+ * What a successful call answers, from the gateway's served document only: per
+ * 2xx status, its description and its JSON shape with refs inlined. A shape too
+ * large at full depth is inlined less deep (deeper parts named, not expanded);
+ * one still too large lists its top-level fields. An operation whose document
+ * states no success answer says so, never a guess.
+ */
+function describeAnswers(op: CatalogOperation, components: Record<string, unknown>): unknown {
+  if (op.successResponses.length === 0) {
+    return "Not documented by the gateway for this operation: read the answer as it comes back from distribute_call_api.";
+  }
+  return op.successResponses.map((r) => {
+    const base = { status: Number(r.status), description: r.description };
+    if (r.contentType) return { ...base, contentType: r.contentType, body: `Not JSON: ${r.contentType}.` };
+    if (r.schema === null) return { ...base, body: "Shape not documented by the gateway." };
+    for (let depth = 4; depth >= 0; depth -= 1) {
+      const body = resolveSchema(r.schema, components, depth);
+      if (JSON.stringify(body).length <= MAX_ANSWER_SCHEMA_CHARS) {
+        return depth === 4 ? { ...base, body } : { ...base, body, note: `Large shape: nested schemas past ${depth} level(s) are named ({ $ref }), not expanded.` };
+      }
+    }
+    const top = resolveSchema(r.schema, components, 1) as { properties?: Record<string, unknown> };
+    return { ...base, body: { fields: Object.keys(top?.properties ?? {}) }, note: "Shape too large to inline: top-level field names only." };
+  });
 }
 
 /** Above this, a response is not handed back whole: an assistant's context is not a file system. */
