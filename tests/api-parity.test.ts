@@ -482,6 +482,13 @@ describe("one lead, from the id a trigger event hands back", () => {
   function routeLead(listed: Array<Record<string, unknown>>) {
     mockCallApi.mockImplementation(async (path: string) => {
       if (path.startsWith("/v1/leads/row-9")) return { data: { leadDetail: detail }, status: 200 };
+      if (path.startsWith("/v1/campaigns/u-push/leads/by-lead/person-1")) return { data: { leadDetail: detail }, status: 200 };
+      if (path.startsWith("/v1/campaigns/"))
+        return {
+          error: "This person is not a lead of this campaign in this org",
+          status: 404,
+          errorBody: { error: "This person is not a lead of this campaign in this org", code: "lead_not_on_campaign" },
+        };
       if (path.startsWith("/v1/leads/")) return { error: "Lead not found", status: 404, errorBody: { error: "Lead not found" } };
       if (path.startsWith("/v1/leads?")) return { data: { leads: listed, nextCursor: null }, status: 200 };
       if (path.startsWith("/v1/emails/by-lead/")) return { data: { generation: null }, status: 200 };
@@ -490,16 +497,26 @@ describe("one lead, from the id a trigger event hands back", () => {
     });
   }
 
-  it("finds the lead by the person's id on the campaign named beside it", async () => {
-    routeLead([{ id: "row-other", leadId: "person-2", campaignId: "u-push" }, { id: "row-9", leadId: "person-1", campaignId: "u-push" }]);
+  it("reads the person's lead on the campaign named beside it directly, without paging the campaign's leads", async () => {
+    routeLead([]);
 
     const res = (await handleToolCall("distribute_get_lead", { leadId: "person-1", campaignId: "u-push", orgId: "o1" })) as Record<string, any>;
 
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/leads?campaignId=u-push&view=compact&status=all&limit=200&orgId=o1");
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/leads/row-9?orgId=o1");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/campaigns/u-push/leads/by-lead/person-1?orgId=o1");
+    expect(mockCallApi.mock.calls.some(([p]) => String(p).startsWith("/v1/leads?"))).toBe(false);
     expect(res.lead).toMatchObject({ id: "row-9", email: "a@b.co" });
     expect(res.note).toContain("person-1 is the person's id");
     expect(res.note).toContain("lead id row-9");
+  });
+
+  it("still finds a person by paging the brand's newest leads when only a brand is named", async () => {
+    routeLead([{ id: "row-other", leadId: "person-2", campaignId: "u-push" }, { id: "row-9", leadId: "person-1", campaignId: "u-push" }]);
+
+    const res = (await handleToolCall("distribute_get_lead", { leadId: "person-1", brandId: "b1", orgId: "o1" })) as Record<string, any>;
+
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/leads?brandId=b1&view=compact&status=all&limit=200&orgId=o1");
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/leads/row-9?brandId=b1&orgId=o1");
+    expect(res.lead).toMatchObject({ id: "row-9" });
   });
 
   it("reads a lead row id directly, under `leadId` or the older `lead_id`", async () => {
@@ -517,10 +534,17 @@ describe("one lead, from the id a trigger event hands back", () => {
     await expect(handleToolCall("distribute_get_lead", { leadId: "person-1" })).rejects.toThrow("ranLeads[].campaignId");
   });
 
-  it("says the person is not among the campaign's newest leads when the lookup finds nothing", async () => {
+  it("says the person is not on that campaign (yet) when the direct read answers lead_not_on_campaign", async () => {
+    routeLead([]);
+    await expect(handleToolCall("distribute_get_lead", { leadId: "person-2", campaignId: "u-push" })).rejects.toThrow(
+      "not a lead of that campaign",
+    );
+  });
+
+  it("says the person is not among the brand's newest leads when the brand lookup finds nothing", async () => {
     routeLead([{ id: "row-other", leadId: "person-2", campaignId: "u-push" }]);
-    await expect(handleToolCall("distribute_get_lead", { leadId: "person-1", campaignId: "u-push" })).rejects.toThrow(
-      "not among the newest 1000 leads of that campaign",
+    await expect(handleToolCall("distribute_get_lead", { leadId: "person-1", brandId: "b1" })).rejects.toThrow(
+      "not among the newest 1000 leads of that brand",
     );
   });
 
