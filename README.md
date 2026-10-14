@@ -51,7 +51,7 @@ Call `distribute_status` first — it confirms the key reached the gateway, list
 
 ## Tools
 
-There are **16 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
+There are **18 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
 
 **Same scope as the API.** Whatever your key can do on `https://api.distribute.you/v1/*`, it can do from here, and nothing more: the API decides on every call what the key may read or write, and this server never widens or narrows it. Our own internals (prompt text, models, token counts, generation costs, the internal service registry) never come back through it.
 
@@ -73,10 +73,17 @@ Curated tools, for the frequent jobs:
 | `distribute_list_workflows` | Available workflows, including ones written in a named expert's style |
 | `distribute_suggest_icp` | Read a brand's site and propose an ideal customer profile |
 | `distribute_list_campaigns` | The campaigns of one brand or organization, with type and limits, filterable by status |
-| `distribute_campaign_stats` | One campaign's results, part by part, success first |
+| `distribute_campaign_stats` | One campaign's results, part by part, success first. Also takes the id of one step of a campaign and names that campaign |
 | `distribute_list_leads` | A brand's leads and where each stands: sent, delivered, clicked, replied, bounced, with dates |
 | `distribute_list_emails` | The emails we wrote for a brand: for each prospect, the first email and every follow-up, subject and body |
 | `distribute_get_lead` | One lead in one call: who they are, where they stand, the emails written for them, and the whole conversation |
+
+The method, before acting on a client's ask:
+
+| Tool | What it does |
+|---|---|
+| `distribute_list_skills` | The method skills our Copilot follows (offers and their documents, funnels, campaigns, budgets, tactics and plays), each with when to read it |
+| `distribute_read_skill` | One skill in full: the steps and the API operations to call, in order. Start with `index` |
 
 The whole API, by intent:
 
@@ -92,7 +99,7 @@ The whole API, by intent:
 
 **What a campaign is.** A campaign is what the customer launched: one brand, one offer, run or paused as one, with a max budget and a max volume ("Max $10/day" when it reaches out on its own, "Up to $1/day" when it acts on what happens). `distribute_list_campaigns` lists those, and only those. Inside, a campaign runs one part per channel step; a part is never listed, counted or named as a campaign.
 
-**How stats read.** `distribute_campaign_stats` takes a campaign id from `distribute_list_campaigns` and returns the campaign's name and status, a one-line `headline`, and `results`: one entry per part, named by what it brings in (`bringsIn`, such as Positive reply or Lead found) and the channel doing it (`channel`). Each entry leads with its own `headline` and a `summary`: meetings booked, positive replies, money earned and ROI (null for now: the API does not serve them, and `summary.notServed` says so), delivery rate (the ratio the API serves, shown as a percent; null when the API serves null), then volume and cost. The gateway's own figures follow unchanged, and bounces, unsubscribes and negative replies close the response in `failureDetails`. Zeros are shown as zeros. An assistant reading the response should report it in that order.
+**How stats read.** `distribute_campaign_stats` takes a campaign id from `distribute_list_campaigns` (an id seen elsewhere, such as in trigger events or offer stats, is one step of a campaign: it is accepted too, and the answer's `note` names the campaign it belongs to) and returns the campaign's name and status, a one-line `headline`, and `results`: one entry per part, named by what it brings in (`bringsIn`, such as Positive reply or Lead found) and the channel doing it (`channel`). Each entry leads with its own `headline` and a `summary`: meetings booked, positive replies, money earned and ROI (null for now: the API does not serve them, and `summary.notServed` says so), delivery rate (the ratio the API serves, shown as a percent; null when the API serves null), then volume and cost. The gateway's own figures follow unchanged, and bounces, unsubscribes and negative replies close the response in `failureDetails`. Zeros are shown as zeros. An assistant reading the response should report it in that order.
 
 **The curated tools read; writes go through `distribute_call_api`.** No curated tool creates or stops a campaign: the customer dashboard has exactly one campaign write, at the end of onboarding, where billing is funded around it, and a one-click tool for it would land a campaign with no money and no audience. Any write the API allows your key (a budget, an offer, a campaign) is still reachable through `distribute_call_api`, exactly as through the API. An assistant is told to say what it is about to change before it calls a write.
 

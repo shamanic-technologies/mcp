@@ -493,10 +493,46 @@ describe("distribute_campaign_stats reads success first", () => {
   });
 
   it("points an unknown id back to distribute_list_campaigns", async () => {
-    mockCallApi.mockResolvedValue({ error: "Sales funnel campaign not found", status: 404 });
+    mockCallApi.mockImplementation(async (path: string) =>
+      path.startsWith("/v1/sales-funnel-campaigns/") ? { error: "Sales funnel campaign not found", status: 404 } : { data: { salesFunnelCampaigns: [] } },
+    );
 
     await expect(handleToolCall("distribute_campaign_stats", { campaign_id: "old-id" })).rejects.toThrow(
-      "No campaign old-id in this organization. Take the campaign id from distribute_list_campaigns.",
+      "Take the campaign id from distribute_list_campaigns.",
+    );
+  });
+
+  it("takes the id of one step of a campaign and names the campaign it belongs to", async () => {
+    mockCallApi.mockImplementation(async (path: string) => {
+      const bare = path.split("?")[0]!;
+      if (bare === "/v1/sales-funnel-campaigns/u-email") return { error: "Sales funnel campaign not found", status: 404 };
+      const table: Record<string, unknown> = {
+        "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] },
+        "/v1/public/channels": catalogue,
+        "/v1/campaigns/u-email/stats": stats(),
+        "/v1/campaigns/u-apollo/stats": stats({ campaignId: "u-apollo" }),
+      };
+      if (!(bare in table)) throw new Error(`unexpected gateway call ${path}`);
+      return { data: table[bare] };
+    });
+
+    const out = (await handleToolCall("distribute_campaign_stats", { campaign_id: "u-email", brandId: "b1" })) as Record<string, any>;
+
+    expect(out.campaign).toEqual({ id: "sfc-bliss", name: "Bliss", status: "ongoing", brandId: "b1", offerId: "off1" });
+    expect(out.note).toBe(
+      'The id you gave is not a campaign: it is one step of the campaign "Bliss" (campaign id sfc-bliss). These are that whole campaign\'s results. Use the campaign id from now on.',
+    );
+    expect(out.results).toHaveLength(2);
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/sales-funnel-campaigns?brandId=b1");
+  });
+
+  it("says an id is neither a campaign nor one of its steps", async () => {
+    mockCallApi.mockImplementation(async (path: string) =>
+      path.startsWith("/v1/sales-funnel-campaigns/") ? { error: "not found", status: 404 } : { data: { salesFunnelCampaigns: [bliss] } },
+    );
+
+    await expect(handleToolCall("distribute_campaign_stats", { campaign_id: "zzz" })).rejects.toThrow(
+      "No campaign zzz in this organization, and no campaign of it has a step with this id.",
     );
   });
 
@@ -682,4 +718,48 @@ describe("a multi-org call with no target surfaces the gateway's refusal as-is",
       expect(mockCallApi).toHaveBeenCalledTimes(1);
     });
   }
+});
+
+describe("the method skills", () => {
+  it("lists the skill tree without staff bookkeeping, naming no organization", async () => {
+    mockCallApi.mockResolvedValue({
+      data: {
+        skills: [
+          { slug: "index", parentSlug: null, title: "Index", description: "Start here", position: 0, version: 3, updatedBy: "kevin@distribute.you", updatedAt: "x" },
+          { slug: "offers", parentSlug: "index", title: "Offers", description: "Offers and documents", position: 1, version: 1, updatedBy: "seed", updatedAt: "x" },
+        ],
+      },
+    });
+
+    const out = (await handleToolCall("distribute_list_skills", {})) as Record<string, any>;
+
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/skills");
+    expect(out.skills).toEqual([
+      { slug: "index", parentSlug: null, title: "Index", description: "Start here" },
+      { slug: "offers", parentSlug: "index", title: "Offers", description: "Offers and documents" },
+    ]);
+    expect(out.next).toContain("index");
+    expect(JSON.stringify(out)).not.toContain("kevin@");
+  });
+
+  it("reads one skill with its markdown", async () => {
+    mockCallApi.mockResolvedValue({
+      data: { slug: "offers", parentSlug: "index", title: "Offers", description: "d", position: 1, version: 2, content: "# Offers", updatedBy: "seed", updatedAt: "x", createdAt: "x" },
+    });
+
+    const out = (await handleToolCall("distribute_read_skill", { slug: "offers" })) as Record<string, any>;
+
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/skills/offers");
+    expect(out).toEqual({ slug: "offers", parentSlug: "index", title: "Offers", description: "d", version: 2, content: "# Offers" });
+  });
+
+  it("points an unknown slug back to the list", async () => {
+    mockCallApi.mockResolvedValue({ error: "Skill not found", status: 404 });
+
+    await expect(handleToolCall("distribute_read_skill", { slug: "nope" })).rejects.toThrow('No skill "nope". Take a slug from distribute_list_skills.');
+  });
+
+  it("tells the agent, from distribute_status, to read the method before acting", () => {
+    expect(toolDefinitions.distribute_status.description).toContain("distribute_list_skills");
+  });
 });

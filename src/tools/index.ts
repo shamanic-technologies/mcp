@@ -123,6 +123,9 @@ export const toolDefinitions = {
       "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. " +
       "A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. " +
       "Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. " +
+      "Then, before acting on what the client asks (set something up, change how a campaign behaves, launch, attach files, budgets...), " +
+      "read the method: distribute_list_skills, then distribute_read_skill on `index` and on every skill whose description matches the ask. " +
+      "They are the steps our own Copilot follows; an API route alone rarely is the whole setup. " +
       "A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` " +
       "with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. " +
       "Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
@@ -131,6 +134,24 @@ export const toolDefinitions = {
         .string()
         .optional()
         .describe("Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive)."),
+    }),
+  },
+  distribute_list_skills: {
+    description:
+      "List the method skills: how to organize a client's request on distribute.you (offers and their documents, sales funnels, campaigns, " +
+      "budgets, workflows, tactics, strategies and plays...), the same skills our own Copilot follows. Each skill has a `slug`, a `title`, " +
+      "and a `description` saying when to read it; `parentSlug` places it in the tree (root: `index`). " +
+      "Read this BEFORE acting on a client ask, then read `index` and every matching skill with distribute_read_skill. " +
+      "Free, read-only, the same for every client: names no brand or organization.",
+    schema: z.object({}),
+  },
+  distribute_read_skill: {
+    description:
+      "Read one method skill in full (markdown `content`): the steps, the API operations to call in order and the traps. " +
+      "Start with `index`, then the skills distribute_list_skills shows matching the client's ask. Follow them; " +
+      "run the operations they name with distribute_call_api (distribute_describe_api for their parameters). Free, read-only.",
+    schema: z.object({
+      slug: z.string().describe("Skill slug from distribute_list_skills, e.g. `index`, `offers`, `campaigns`."),
     }),
   },
   distribute_signup_start: {
@@ -209,6 +230,7 @@ export const toolDefinitions = {
   distribute_campaign_stats: {
     description:
       "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, " +
+      "An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. " +
       "one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). " +
       "Report the campaign by its name and never call an entry of `results` a campaign. " +
       "Report meetings, positive replies and delivery rate first, then volume and cost; " +
@@ -327,6 +349,12 @@ export async function handleToolCall(
   switch (name) {
     case "distribute_status":
       return handleStatus(args);
+
+    case "distribute_list_skills":
+      return handleListSkills();
+
+    case "distribute_read_skill":
+      return handleReadSkill(args);
 
     case "distribute_signup_start":
       return handleSignupStart(args);
@@ -458,6 +486,34 @@ async function handleStatus(args: Record<string, unknown> = {}) {
     lookupErrors: Array.isArray(me.lookupErrors) && me.lookupErrors.length > 0 ? me.lookupErrors : undefined,
     apiUrl: status.apiUrl,
   };
+}
+
+/**
+ * The agent skill tree (api-service `GET /v1/skills`, chat-service's Copilot skills): the same
+ * method our Copilot follows, readable by any key. It is one tree for every client, so neither
+ * read names a brand or organization. Who edited a skill is staff bookkeeping: not handed on.
+ */
+type SkillSummary = { slug: string; parentSlug: string | null; title: string; description: string; position: number };
+
+async function handleListSkills() {
+  const result = await callApi<{ skills: SkillSummary[] }>("/v1/skills");
+  if (result.error) failWith(result);
+  const skills = (result.data as { skills: SkillSummary[] }).skills;
+  return {
+    next: "Read `index` with distribute_read_skill, then every skill whose description matches the client's ask, before acting.",
+    skills: skills.map((s) => ({ slug: s.slug, parentSlug: s.parentSlug, title: s.title, description: s.description })),
+  };
+}
+
+async function handleReadSkill(args: Record<string, unknown>) {
+  const slug = String(args.slug);
+  const result = await callApi<SkillSummary & { content: string }>(`/v1/skills/${encodeURIComponent(slug)}`);
+  if (result.error) {
+    if (result.status === 404) throw new Error(`No skill "${slug}". Take a slug from distribute_list_skills.`);
+    failWith(result);
+  }
+  const s = result.data as SkillSummary & { content: string; version?: number };
+  return { slug: s.slug, parentSlug: s.parentSlug, title: s.title, description: s.description, version: s.version, content: s.content };
 }
 
 async function handleListWorkflows(args: Record<string, unknown>) {
@@ -662,18 +718,35 @@ function partNames(catalogue: PublicCatalogue, u: FunnelUnit): { bringsIn: strin
   return names;
 }
 
+/**
+ * The campaign an id names. A campaign id resolves directly. An id that is one PART of a
+ * campaign (the id trigger events, offer stats and lead rows carry) resolves to the campaign
+ * holding it, read off the campaign list's own parts: the agent gets that campaign's results
+ * and is told which campaign it is, never a dead end and never the part as a campaign.
+ */
+async function campaignNamedBy(args: Record<string, unknown>): Promise<{ campaign: FunnelCampaign; viaPart: boolean }> {
+  const given = String(args.campaign_id);
+  const one = await callApi<{ salesFunnelCampaign: FunnelCampaign }>(
+    withTarget(`/v1/sales-funnel-campaigns/${encodeURIComponent(given)}`, args),
+  );
+  if (!one.error) return { campaign: (one.data as { salesFunnelCampaign: FunnelCampaign }).salesFunnelCampaign, viaPart: false };
+  if (one.status !== 404) failWith(one);
+
+  const all = await callApi<{ salesFunnelCampaigns: FunnelCampaign[] }>(withTarget("/v1/sales-funnel-campaigns", args));
+  if (all.error) failWith(all);
+  const holder = (all.data as { salesFunnelCampaigns: FunnelCampaign[] }).salesFunnelCampaigns.find((c) =>
+    c.units.some((u) => u.campaignId === given),
+  );
+  if (holder) return { campaign: holder, viaPart: true };
+  throw new Error(
+    `No campaign ${given} in this organization, and no campaign of it has a step with this id. ` +
+      "Take the campaign id from distribute_list_campaigns. " +
+      TARGET_HINT,
+  );
+}
+
 async function handleCampaignStats(args: Record<string, unknown>) {
-  const id = encodeURIComponent(String(args.campaign_id));
-  const one = await callApi<{ salesFunnelCampaign: FunnelCampaign }>(withTarget(`/v1/sales-funnel-campaigns/${id}`, args));
-  if (one.error) {
-    if (one.status === 404) {
-      throw new Error(
-        `No campaign ${String(args.campaign_id)} in this organization. Take the campaign id from distribute_list_campaigns. ${TARGET_HINT}`,
-      );
-    }
-    failWith(one);
-  }
-  const campaign = (one.data as { salesFunnelCampaign: FunnelCampaign }).salesFunnelCampaign;
+  const { campaign, viaPart } = await campaignNamedBy(args);
 
   const catalogueRead = await callApi<PublicCatalogue>("/v1/public/channels");
   if (catalogueRead.error) failWith(catalogueRead);
@@ -694,6 +767,13 @@ async function handleCampaignStats(args: Record<string, unknown>) {
       results.length === 0
         ? `${campaign.salesFunnelName} (${state}): nothing has run in this campaign yet.`
         : `${campaign.salesFunnelName} (${state}). ${lines.join(" ")}`,
+    ...(viaPart
+      ? {
+          note:
+            `The id you gave is not a campaign: it is one step of the campaign "${campaign.salesFunnelName}" (campaign id ${campaign.id}). ` +
+            "These are that whole campaign's results. Use the campaign id from now on.",
+        }
+      : {}),
     campaign: { id: campaign.id, name: campaign.salesFunnelName, status: campaign.status, brandId: campaign.brandId, offerId: campaign.offerId },
     // One entry per part of the campaign, each with what it brings in and the channel doing it.
     // Report the campaign by its name; a part is never a campaign of its own.
