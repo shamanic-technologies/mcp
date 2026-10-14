@@ -53,6 +53,18 @@ const DOC = {
         requestBody: { content: { "application/json": { schema: { $ref: "#/components/schemas/Budget" } } } },
       }),
     },
+    // The old per-step daily ceiling, still served beside today's campaign caps.
+    "/v1/brands/{brandId}/campaign-budget": { put: op("Set one campaign's daily budget", { tag: "Billing" }) },
+    "/v1/brands/{brandId}/offers/{offerId}/sales-funnels/{salesFunnelId}/caps": {
+      get: op("Read a sales funnel's max budget + max volume and what it consumed this period", { tag: "Billing", operationId: "readCaps" }),
+      put: op("State a sales funnel's MAX BUDGET and MAX VOLUME", {
+        tag: "Billing",
+        operationId: "stateCaps",
+        description: "Body { maxBudget: {amountCents, period} | null, maxVolume: {count, period} | null }, period one_off | daily | weekly | monthly.",
+      }),
+    },
+    "/v1/sales-funnel-campaigns/{id}": { patch: op("Run or pause the whole sales funnel campaign", { tag: "Campaigns" }) },
+    "/v1/billing/accounts/monthly_charge_limit": { put: op("Set the monthly charge limit", { tag: "Billing" }) },
     "/v1/prompts": { get: op("Get prompt", { tag: "Prompts" }) },
     "/v1/content/platform-prompts": { get: op("List platform prompts", { tag: "Content" }) },
     "/v1/platform/services": { get: op("List services", { tag: "Platform" }) },
@@ -158,6 +170,23 @@ describe("finding a capability by intent", () => {
     expect(searchOperations(operations, "what did the prospect reply")[0]!.path).toBe("/v1/conversations");
     expect(searchOperations(operations, "account balance")[0]!.path).toBe("/v1/billing/accounts/balance");
     expect(searchOperations(operations, "change the daily budget")[0]).toMatchObject({ method: "PATCH" });
+  });
+
+  it("finds a campaign's caps in today's words, ahead of the old per-step daily budget", async () => {
+    const { operations } = await getCatalog();
+    const caps = "/v1/brands/{brandId}/offers/{offerId}/sales-funnels/{salesFunnelId}/caps";
+    for (const ask of [
+      "set a campaign's max budget",
+      "change a campaign's max budget",
+      "set the max budget and max volume of a campaign",
+      "cap a campaign at 50 leads a week",
+      "limit my campaign to 100 new people a month",
+      "set my campaign to max $200 per month",
+    ]) {
+      expect(searchOperations(operations, ask)[0], ask).toMatchObject({ method: "PUT", path: caps });
+    }
+    expect(searchOperations(operations, "what are my campaign limits")[0], "read").toMatchObject({ path: caps });
+    expect(searchOperations(operations, "pause a campaign")[0]!.path).toBe("/v1/sales-funnel-campaigns/{id}");
   });
 
   it("with no query, lists the areas of the API", async () => {

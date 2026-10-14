@@ -267,7 +267,25 @@ const SYNONYMS: Record<string, string[]> = {
   money: ["billing", "revenue"],
   invoice: ["billing", "payment"],
   spend: ["cost", "billing"],
+  // A campaign IS a sales funnel campaign, and its money is its caps (a max budget and/or a max
+  // volume per period): today's words for it land on the funnel and its caps.
+  campaign: ["funnel"],
   budget: ["budget", "cap"],
+  max: ["cap"],
+  cap: ["max"],
+  volume: ["cap", "max"],
+  limit: ["cap", "max"],
+  catalog: ["catalogue", "price"],
+  catalogue: ["price"],
+  price: ["catalogue", "cost"],
+  priced: ["price", "catalogue"],
+  cost: ["price"],
+  // The gateway states a cap rather than setting it.
+  set: ["state"],
+  change: ["state", "update"],
+  day: ["daily"],
+  week: ["weekly"],
+  month: ["monthly"],
   performance: ["stat"],
   result: ["stat"],
   metric: ["stat"],
@@ -317,6 +335,7 @@ const VERB_METHOD: Record<string, HttpMethod> = {
   update: "PATCH", change: "PATCH", set: "PUT", edit: "PATCH",
   delete: "DELETE", remove: "DELETE", revoke: "DELETE", cancel: "DELETE",
   grant: "POST", invite: "POST", open: "POST",
+  cap: "PUT", limit: "PUT",
 };
 
 /**
