@@ -123,7 +123,7 @@ export const toolDefinitions = {
       "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. " +
       "A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. " +
       "Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. " +
-      "Then, before acting on what the client asks (set something up, change how a campaign behaves, launch, attach files, budgets...), " +
+      "Then, before acting on what the client asks (set something up, change how a campaign behaves, launch, attach files, caps...), " +
       "read the method: distribute_list_skills, then distribute_read_skill on `index` and on every skill whose description matches the ask. " +
       "They are the steps our own Copilot follows; an API route alone rarely is the whole setup. " +
       "A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` " +
@@ -138,8 +138,8 @@ export const toolDefinitions = {
   },
   distribute_list_skills: {
     description:
-      "List the method skills: how to organize a client's request on distribute.you (offers and their documents, sales funnels, campaigns, " +
-      "budgets, workflows, tactics, strategies and plays...), the same skills our own Copilot follows. Each skill has a `slug`, a `title`, " +
+      "List the method skills: how to organize a client's request on distribute.you (offers and their documents, the catalogue, sales funnels, " +
+      "campaigns and their caps, triggers, billing, workflows and plays...), the same skills our own Copilot follows. Each skill has a `slug`, a `title`, " +
       "and a `description` saying when to read it; `parentSlug` places it in the tree (root: `index`). " +
       "Read this BEFORE acting on a client ask, then read `index` and every matching skill with distribute_read_skill. " +
       "Free, read-only, the same for every client: names no brand or organization.",
@@ -161,7 +161,7 @@ export const toolDefinitions = {
       "Give an email you can read and a phone number in international format (+33612345678; only its format is checked). " +
       "A 6-digit code is emailed; then call distribute_signup_complete with it. " +
       "An email that already has an account works too: it gets one more key for that account. " +
-      "Free to call. No free credit, no trial, no subscription: you prepay when you want to spend (distribute_prepay).",
+      "Free to call. Pay as you go: you prepay a balance when you want to spend (distribute_prepay), and each action is billed at its price on https://distribute.you/catalog.",
     schema: z.object({
       email: z.string().describe("Email to open the account with. The code is sent there."),
       phone: z.string().describe("Phone number in international format, e.g. +33612345678. Only its format is checked."),
@@ -187,7 +187,9 @@ export const toolDefinitions = {
       "Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically: " +
       "when the balance falls under `auto_topup_threshold_cents`, it adds `auto_topup_amount_cents`. Auto top-up is required. " +
       "Amounts in cents, minimums: topup_amount_cents 1000 ($10), auto_topup_amount_cents 1500 ($15), auto_topup_threshold_cents 500 ($5). " +
-      "Less is refused with `amount_below_minimum`, naming the field. No free credit, no subscription. " +
+      "Less is refused with `amount_below_minimum`, naming the field. " +
+      "Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog " +
+      "(an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. " +
       "Then check distribute_prepaid_status until `state` is `active`. " +
       TARGET_HINT,
     schema: z.object({
@@ -217,10 +219,10 @@ export const toolDefinitions = {
   },
   distribute_list_campaigns: {
     description:
-      "List the campaigns of one brand or organization. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), " +
+      "List the campaigns of one brand or organization. A campaign is one sales funnel run for one offer of a brand, started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), " +
       "a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), " +
-      "and its limits: `budget` and `volume` in words (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. " +
-      "A campaign with no budget set spends nothing. Report each campaign by its name. " +
+      "and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. " +
+      "A campaign with no max budget spends nothing. Report each campaign by its name. " +
       TARGET_HINT,
     schema: z.object({
       ...targetShape,
@@ -230,8 +232,8 @@ export const toolDefinitions = {
   distribute_campaign_stats: {
     description:
       "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, " +
-      "An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. " +
       "one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). " +
+      "An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. " +
       "Report the campaign by its name and never call an entry of `results` a campaign. " +
       "Report meetings, positive replies and delivery rate first, then volume and cost; " +
       "bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. " +
@@ -305,8 +307,8 @@ export const toolDefinitions = {
   distribute_find_api: {
     description:
       "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API " +
-      "(the same API and the same scope your key has: leads, emails, conversations, campaigns, budgets, offers, audiences, billing, CRM, stats...) " +
-      "by what you want to do, in plain words (\"list the emails sent for my brand\", \"change the daily budget\", \"account balance\"). " +
+      "(the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) " +
+      "by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). " +
       "Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details " +
       "and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has.",
     schema: z.object({
@@ -614,7 +616,7 @@ function usd(cents: string | null | undefined): number | null {
 const PERIOD_SUFFIX: Record<string, string> = { daily: "/day", weekly: "/week", monthly: "/month", one_off: " in total" };
 const periodSuffix = (p: string) => PERIOD_SUFFIX[p] ?? ` per ${p}`;
 
-/** The dashboard's words for a campaign's limits: "Max $10/day" (proactive), "Up to $1/day" (reactive). */
+/** The dashboard's words for a campaign's caps: "Max $10/day" (proactive), "Up to $20/week" (reactive). */
 function limitWords(type: string | null, caps: CapsBody): { budget: string | null; volume: string | null } {
   const prefix = type === "proactive" ? "Max " : type === "reactive" ? "Up to " : "";
   const b = caps.maxBudget;

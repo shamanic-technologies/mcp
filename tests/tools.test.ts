@@ -12,6 +12,7 @@ vi.mock("../src/lib/api-client.js", () => ({
 
 import { handleToolCall, toolDefinitions } from "../src/tools/index.js";
 import { callApi } from "../src/lib/api-client.js";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
 const mockCallApi = vi.mocked(callApi);
 
@@ -763,3 +764,27 @@ describe("the method skills", () => {
     expect(toolDefinitions.distribute_status.description).toContain("distribute_list_skills");
   });
 });
+
+describe("tool text speaks the current model", () => {
+  // Owner 2026-10-14: a campaign is a sales funnel campaign with caps (max budget and/or max
+  // volume per period), pay as you go at catalogue prices. Retired: a daily budget per campaign,
+  // free credits, the old fixed offers, and calling us an agency.
+  const RETIRED = [/daily budget/i, /free credit/i, /\$400/, /\$1\/day/, /agency/i, /\bsubscription\b/i, /\btrial\b/i];
+
+  it("no tool description, parameter description or example names a retired concept", () => {
+    const text = JSON.stringify(
+      Object.entries(toolDefinitions).map(([name, t]) => ({ name, description: t.description, schema: zodToJsonSchema(t.schema) })),
+    );
+    for (const word of RETIRED) expect(text, String(word)).not.toMatch(word);
+  });
+
+  it("find_api's example asks in today's words", () => {
+    expect(toolDefinitions.distribute_find_api.description).toContain("set a campaign's max budget");
+  });
+
+  it("prepaying says pay as you go at catalogue prices", () => {
+    expect(toolDefinitions.distribute_prepay.description).toContain("https://distribute.you/catalog");
+    expect(toolDefinitions.distribute_prepay.description).toContain("BounceVerify");
+  });
+});
+
