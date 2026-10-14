@@ -25,7 +25,7 @@
     },
     "schemas": {
       "distribute_status": {
-        "description": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+        "description": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Then, before acting on what the client asks (set something up, change how a campaign behaves, launch, attach files, budgets...), read the method: distribute_list_skills, then distribute_read_skill on `index` and on every skill whose description matches the ask. They are the steps our own Copilot follows; an API route alone rarely is the whole setup. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_status",
           "definitions": {
@@ -37,6 +37,42 @@
                   "description": "Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive)."
                 }
               },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_list_skills": {
+        "description": "List the method skills: how to organize a client's request on distribute.you (offers and their documents, sales funnels, campaigns, budgets, workflows, tactics, strategies and plays...), the same skills our own Copilot follows. Each skill has a `slug`, a `title`, and a `description` saying when to read it; `parentSlug` places it in the tree (root: `index`). Read this BEFORE acting on a client ask, then read `index` and every matching skill with distribute_read_skill. Free, read-only, the same for every client: names no brand or organization.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_list_skills",
+          "definitions": {
+            "distribute_list_skills": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_read_skill": {
+        "description": "Read one method skill in full (markdown `content`): the steps, the API operations to call in order and the traps. Start with `index`, then the skills distribute_list_skills shows matching the client's ask. Follow them; run the operations they name with distribute_call_api (distribute_describe_api for their parameters). Free, read-only.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_read_skill",
+          "definitions": {
+            "distribute_read_skill": {
+              "type": "object",
+              "properties": {
+                "slug": {
+                  "type": "string",
+                  "description": "Skill slug from distribute_list_skills, e.g. `index`, `offers`, `campaigns`."
+                }
+              },
+              "required": [
+                "slug"
+              ],
               "additionalProperties": false
             }
           },
@@ -232,7 +268,7 @@
         }
       },
       "distribute_campaign_stats": {
-        "description": "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_campaign_stats",
           "definitions": {
@@ -673,7 +709,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+        "summary": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Then, before acting on what the client asks (set something up, change how a campaign behaves, launch, attach files, budgets...), read the method: distribute_list_skills, then distribute_read_skill on `index` and on every skill whose description matches the ask. They are the steps our own Copilot follows; an API route alone rarely is the whole setup. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
         "description": "MCP Tool: distribute_status. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_status\".",
         "requestBody": {
           "content": {
@@ -686,6 +722,112 @@
                     "description": "Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive)."
                   }
                 },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_list_skills": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "List the method skills: how to organize a client's request on distribute.you (offers and their documents, sales funnels, campaigns, budgets, workflows, tactics, strategies and plays...), the same skills our own Copilot follows. Each skill has a `slug`, a `title`, and a `description` saying when to read it; `parentSlug` places it in the tree (root: `index`). Read this BEFORE acting on a client ask, then read `index` and every matching skill with distribute_read_skill. Free, read-only, the same for every client: names no brand or organization.",
+        "description": "MCP Tool: distribute_list_skills. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_skills\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_read_skill": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Read one method skill in full (markdown `content`): the steps, the API operations to call in order and the traps. Start with `index`, then the skills distribute_list_skills shows matching the client's ask. Follow them; run the operations they name with distribute_call_api (distribute_describe_api for their parameters). Free, read-only.",
+        "description": "MCP Tool: distribute_read_skill. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_read_skill\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "slug": {
+                    "type": "string",
+                    "description": "Skill slug from distribute_list_skills, e.g. `index`, `offers`, `campaigns`."
+                  }
+                },
+                "required": [
+                  "slug"
+                ],
                 "additionalProperties": false
               }
             }
@@ -1125,7 +1267,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "Get one campaign's results, by the campaign id from distribute_list_campaigns. A campaign runs as one; its results come in `results`, An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). Report the campaign by its name and never call an entry of `results` a campaign. Report meetings, positive replies and delivery rate first, then volume and cost; bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. Show zeros plainly (0 meetings is still reported). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_campaign_stats. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_campaign_stats\".",
         "requestBody": {
           "content": {
