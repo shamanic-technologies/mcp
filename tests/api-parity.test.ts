@@ -9,7 +9,7 @@ vi.mock("../src/lib/api-client.js", () => ({
   runWithApiKey: vi.fn((_k: unknown, fn: () => unknown) => fn()),
 }));
 
-import { handleToolCall, toolDefinitions, MAX_RESULT_CHARS } from "../src/tools/index.js";
+import { handleToolCall, toolDefinitions, MAX_RESULT_CHARS, MAX_ANSWER_SCHEMA_CHARS } from "../src/tools/index.js";
 import { callApi, getApiKey, headApi } from "../src/lib/api-client.js";
 import { loadCatalogFromDocument, resetCatalog, searchOperations, matchPath, getCatalog } from "../src/lib/gateway-catalog.js";
 
@@ -22,7 +22,7 @@ const op = (summary: string, extra: Record<string, unknown> = {}) => ({
   operationId: extra.operationId ?? summary.replace(/\W+/g, "_"),
   security: [{ bearerAuth: [] }],
   parameters: extra.parameters ?? [],
-  responses: {},
+  responses: extra.responses ?? {},
   ...(extra.requestBody ? { requestBody: extra.requestBody } : {}),
 });
 
@@ -65,11 +65,52 @@ const DOC = {
     },
     "/v1/sales-funnel-campaigns/{id}": { patch: op("Run or pause the whole sales funnel campaign", { tag: "Campaigns" }) },
     "/v1/billing/accounts/monthly_charge_limit": { put: op("Set the monthly charge limit", { tag: "Billing" }) },
+    "/v1/trigger-events": {
+      post: op("Report a trigger event", {
+        tag: "Triggers",
+        operationId: "postV1TriggerEvents",
+        requestBody: { content: { "application/json": { schema: { type: "object", properties: { triggerId: { type: "string" } } } } } },
+        responses: {
+          "200": { description: "Replayed", content: { "application/json": { schema: { $ref: "#/components/schemas/ReportTriggerEventResponse" } } } },
+          "201": { description: "Recorded", content: { "application/json": { schema: { $ref: "#/components/schemas/ReportTriggerEventResponse" } } } },
+          "400": { description: "Bad request", content: { "application/json": { schema: { type: "object" } } } },
+        },
+      }),
+    },
+    "/v1/campaigns/{id}/stream": {
+      get: op("Stream a campaign's events", { tag: "Campaigns", operationId: "streamCampaign", responses: { "200": { description: "SSE stream", content: { "text/event-stream": { schema: { type: "string" } } } } } }),
+    },
+    "/v1/huge": {
+      get: op("A huge answer", { tag: "Misc", operationId: "huge", responses: { "200": { description: "Big", content: { "application/json": { schema: { $ref: "#/components/schemas/Huge" } } } } } }),
+    },
     "/v1/prompts": { get: op("Get prompt", { tag: "Prompts" }) },
     "/v1/content/platform-prompts": { get: op("List platform prompts", { tag: "Content" }) },
     "/v1/platform/services": { get: op("List services", { tag: "Platform" }) },
   },
-  components: { schemas: { Budget: { type: "object", properties: { dailyBudgetCents: { type: "integer" } } } } },
+  components: {
+    schemas: {
+      Budget: { type: "object", properties: { dailyBudgetCents: { type: "integer" } } },
+      ReportTriggerEventResponse: {
+        type: "object",
+        properties: { event: { $ref: "#/components/schemas/TriggerEvent" }, replayed: { type: "boolean" } },
+        required: ["event", "replayed"],
+      },
+      TriggerEvent: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          outcome: { type: "string", nullable: true, description: "`ran` | `skipped` | `failed`; null until done." },
+          skipReason: { type: "string", nullable: true },
+          ranCampaignIds: { type: "array", items: { type: "string" } },
+        },
+      },
+      Huge: { type: "object", properties: { rows: { type: "array", items: { $ref: "#/components/schemas/HugeRow" } } } },
+      HugeRow: {
+        type: "object",
+        properties: Object.fromEntries(Array.from({ length: 400 }, (_, i) => [`field${i}`, { type: "string", description: "x".repeat(40) }])),
+      },
+    },
+  },
 };
 
 beforeEach(() => {
@@ -201,6 +242,36 @@ describe("finding a capability by intent", () => {
     const listed = (await handleToolCall("distribute_describe_api", { operationId: "listEmails" })) as { parameters: Array<{ name: string }> };
     // Header plumbing is the gateway's, not a parameter the caller sets.
     expect(listed.parameters.map((p) => p.name)).toEqual(["brandId"]);
+  });
+});
+
+describe("describe_api says what a successful call answers", () => {
+  it("inlines each 2xx answer's shape from the served document", async () => {
+    const res = (await handleToolCall("distribute_describe_api", { operationId: "postV1TriggerEvents" })) as {
+      answers: Array<{ status: number; description: string; body: { properties: Record<string, { properties?: Record<string, unknown> }> } }>;
+    };
+    expect(res.answers.map((a) => a.status)).toEqual([200, 201]);
+    const created = res.answers.find((a) => a.status === 201)!;
+    expect(created.description).toBe("Recorded");
+    expect(Object.keys(created.body.properties)).toEqual(["event", "replayed"]);
+    expect(Object.keys(created.body.properties.event.properties!)).toEqual(["id", "outcome", "skipReason", "ranCampaignIds"]);
+  });
+
+  it("says nothing is documented when the gateway documents no success answer", async () => {
+    const res = (await handleToolCall("distribute_describe_api", { operationId: "listEmails" })) as { answers: unknown };
+    expect(res.answers).toMatch(/^Not documented by the gateway/);
+  });
+
+  it("names a non-JSON answer's media type instead of a shape", async () => {
+    const res = (await handleToolCall("distribute_describe_api", { operationId: "streamCampaign" })) as { answers: Array<Record<string, unknown>> };
+    expect(res.answers).toEqual([{ status: 200, description: "SSE stream", contentType: "text/event-stream", body: "Not JSON: text/event-stream." }]);
+  });
+
+  it("bounds a huge answer instead of flooding the context", async () => {
+    const res = (await handleToolCall("distribute_describe_api", { operationId: "huge" })) as { answers: Array<{ body: unknown; note: string }> };
+    expect(JSON.stringify(res.answers[0].body).length).toBeLessThanOrEqual(MAX_ANSWER_SCHEMA_CHARS);
+    expect(res.answers[0].note).toMatch(/Large shape/);
+    expect(JSON.stringify(res.answers[0].body)).toContain('"$ref":"HugeRow"');
   });
 });
 
