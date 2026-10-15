@@ -236,7 +236,7 @@
         }
       },
       "distribute_list_campaigns": {
-        "description": "List the campaigns of one brand or organization. A campaign is one sales funnel run for one offer of a brand, started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no max budget spends nothing. Report each campaign by its name. Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; \"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead found → Sales Cold Email Outreach → Positive reply → Paid client\"). Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask (e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "List the campaigns of one brand or organization. A campaign is one sales funnel run for one offer of a brand, started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no max budget spends nothing. Report each campaign by its name. Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; \"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead found → Sales Cold Email Outreach → Positive reply → Paid client\"). Every trigger a campaign can start on, and which ones you may fire: distribute_list_triggers. Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask (e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_campaigns",
           "definitions": {
@@ -430,7 +430,7 @@
         }
       },
       "distribute_get_lead": {
-        "description": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Pass `leadId`: either a lead's `id` from distribute_list_leads (this lead on one campaign), or the person's id: a list row's `leadId`, or the `ranLeads[].leadId` a trigger event (POST /v1/trigger-events) answers. With the person's id, also pass `campaignId` (the `ranLeads[].campaignId` beside it, or a lead's `campaignId`) or brandId, so the lead is found on that campaign; the answer's `lead.id` is then the lead's `id`. The older name `lead_id` still works. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Pass `leadId`: either a lead's `id` from distribute_list_leads (this lead on one campaign), or the person's id: a list row's `leadId`, or the `ranLeads[].leadId` a trigger event (POST /v1/trigger-events) answers. With the person's id, also pass `campaignId` (the `ranLeads[].campaignId` beside it, or a lead's `campaignId`) or brandId, so the lead is read directly on that campaign (with only a brandId, among the brand's newest 1,000 leads); the answer's `lead.id` is then the lead's `id`. The older name `lead_id` still works. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_get_lead",
           "definitions": {
@@ -464,8 +464,22 @@
           "$schema": "http://json-schema.org/draft-07/schema#"
         }
       },
+      "distribute_list_triggers": {
+        "description": "List the triggers: the entry doors a reactive campaign starts on, each with its `id`, `name`, what it means, its `type` (`outcome`: an outcome just reached for a person, named by `outcome`; `condition`: computed by us) and `callable`. Outcome triggers (an outcome was just reached for a person: Form submitted, Meeting booked, Paid client...) are callable: fire one when that fact happens in the client's own tools. Condition triggers computed by us (an outcome + a delay + \"still not\" another, a GitHub issue in prod...) carry `callable: false` and are never fired by a call. Each trigger's `callable` is the answer. A new outcome or trigger is a feature request to the distribute.you team, never created by a call. To fire a callable one for a person when the fact happens (\"a form was submitted by jane@acme.com\"): distribute_call_api POST /v1/trigger-events with body {triggerId, brandId, offerId, person: {email, name?}, item?, idempotencyKey?} (the brand's offers: GET /v1/brands/{id}/offers). Every live campaign of that offer starting on the trigger runs for the person, within its caps; the answer's `event.outcome` says `ran` or `skipped` with the reason (e.g. `no_campaign`). A `callable: false` trigger is refused before the call: tell the user it is computed by us and fires on its own. The same for every client: names no brand or organization. Free, read-only.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_list_triggers",
+          "definitions": {
+            "distribute_list_triggers": {
+              "type": "object",
+              "properties": {},
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
       "distribute_find_api": {
-        "description": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has.",
+        "description": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has. To list the triggers (and which ones a call may fire), use distribute_list_triggers.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_find_api",
           "definitions": {
@@ -1206,7 +1220,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List the campaigns of one brand or organization. A campaign is one sales funnel run for one offer of a brand, started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no max budget spends nothing. Report each campaign by its name. Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; \"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead found → Sales Cold Email Outreach → Positive reply → Paid client\"). Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask (e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "List the campaigns of one brand or organization. A campaign is one sales funnel run for one offer of a brand, started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. A campaign with no max budget spends nothing. Report each campaign by its name. Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; \"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead found → Sales Cold Email Outreach → Positive reply → Paid client\"). Every trigger a campaign can start on, and which ones you may fire: distribute_list_triggers. Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask (e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_list_campaigns. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_campaigns\".",
         "requestBody": {
           "content": {
@@ -1610,7 +1624,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Pass `leadId`: either a lead's `id` from distribute_list_leads (this lead on one campaign), or the person's id: a list row's `leadId`, or the `ranLeads[].leadId` a trigger event (POST /v1/trigger-events) answers. With the person's id, also pass `campaignId` (the `ranLeads[].campaignId` beside it, or a lead's `campaignId`) or brandId, so the lead is found on that campaign; the answer's `lead.id` is then the lead's `id`. The older name `lead_id` still works. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them (first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). Pass `leadId`: either a lead's `id` from distribute_list_leads (this lead on one campaign), or the person's id: a list row's `leadId`, or the `ranLeads[].leadId` a trigger event (POST /v1/trigger-events) answers. With the person's id, also pass `campaignId` (the `ranLeads[].campaignId` beside it, or a lead's `campaignId`) or brandId, so the lead is read directly on that campaign (with only a brandId, among the brand's newest 1,000 leads); the answer's `lead.id` is then the lead's `id`. The older name `lead_id` still works. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_get_lead. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_get_lead\".",
         "requestBody": {
           "content": {
@@ -1675,12 +1689,61 @@
         }
       }
     },
+    "/mcp/tools/distribute_list_triggers": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "List the triggers: the entry doors a reactive campaign starts on, each with its `id`, `name`, what it means, its `type` (`outcome`: an outcome just reached for a person, named by `outcome`; `condition`: computed by us) and `callable`. Outcome triggers (an outcome was just reached for a person: Form submitted, Meeting booked, Paid client...) are callable: fire one when that fact happens in the client's own tools. Condition triggers computed by us (an outcome + a delay + \"still not\" another, a GitHub issue in prod...) carry `callable: false` and are never fired by a call. Each trigger's `callable` is the answer. A new outcome or trigger is a feature request to the distribute.you team, never created by a call. To fire a callable one for a person when the fact happens (\"a form was submitted by jane@acme.com\"): distribute_call_api POST /v1/trigger-events with body {triggerId, brandId, offerId, person: {email, name?}, item?, idempotencyKey?} (the brand's offers: GET /v1/brands/{id}/offers). Every live campaign of that offer starting on the trigger runs for the person, within its caps; the answer's `event.outcome` says `ran` or `skipped` with the reason (e.g. `no_campaign`). A `callable: false` trigger is refused before the call: tell the user it is computed by us and fires on its own. The same for every client: names no brand or organization. Free, read-only.",
+        "description": "MCP Tool: distribute_list_triggers. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_triggers\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/mcp/tools/distribute_find_api": {
       "post": {
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has.",
+        "summary": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has. To list the triggers (and which ones a call may fire), use distribute_list_triggers.",
         "description": "MCP Tool: distribute_find_api. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_find_api\".",
         "requestBody": {
           "content": {

@@ -130,6 +130,26 @@ export const NO_HUMAN_NEEDED =
  * customer who wants that route can still reach it through distribute_call_api,
  * exactly as through the API.
  */
+/**
+ * The trigger rule, said the same way in every tool that touches triggers (owner 2026-10-15,
+ * standard vocabulary MUST-HAVE 3 and decision C1). A trigger is an entry door a reactive
+ * campaign starts on. features-service owns the catalogue and says, per trigger, its `type`
+ * and whether it is `callable`; campaign-service owns the one door (POST /v1/trigger-events)
+ * that records the occurrence and runs the live campaigns on it.
+ */
+/** How to ring the door, through the generic tool (a curated tool only reads, see below). */
+export const FIRE_TRIGGER_HOW =
+  "distribute_call_api POST /v1/trigger-events with body {triggerId, brandId, offerId, person: {email, name?}, item?, idempotencyKey?} " +
+  "(the brand's offers: GET /v1/brands/{id}/offers). Every live campaign of that offer starting on the trigger runs for the person, within its caps; " +
+  "the answer's `event.outcome` says `ran` or `skipped` with the reason (e.g. `no_campaign`). A `callable: false` trigger is refused before the call: " +
+  "tell the user it is computed by us and fires on its own.";
+
+export const TRIGGER_RULE =
+  "Outcome triggers (an outcome was just reached for a person: Form submitted, Meeting booked, Paid client...) are callable: " +
+  "fire one when that fact happens in the client's own tools. Condition triggers computed by us (an outcome + a delay + \"still not\" another, " +
+  "a GitHub issue in prod...) carry `callable: false` and are never fired by a call. Each trigger's `callable` is the answer. " +
+  "A new outcome or trigger is a feature request to the distribute.you team, never created by a call.";
+
 // Tool definitions with Zod schemas
 export const toolDefinitions = {
   distribute_status: {
@@ -239,6 +259,7 @@ export const toolDefinitions = {
       "A campaign with no max budget spends nothing. Report each campaign by its name. " +
       "Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; " +
       "\"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead found → Sales Cold Email Outreach → Positive reply → Paid client\"). " +
+      "Every trigger a campaign can start on, and which ones you may fire: distribute_list_triggers. " +
       "Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask " +
       "(e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). " +
       TARGET_HINT,
@@ -329,13 +350,23 @@ export const toolDefinitions = {
       ...targetShape,
     }),
   },
+  distribute_list_triggers: {
+    description:
+      "List the triggers: the entry doors a reactive campaign starts on, each with its `id`, `name`, what it means, its `type` " +
+      "(`outcome`: an outcome just reached for a person, named by `outcome`; `condition`: computed by us) and `callable`. " +
+      TRIGGER_RULE + " " +
+      "To fire a callable one for a person when the fact happens (\"a form was submitted by jane@acme.com\"): " +
+      FIRE_TRIGGER_HOW + " The same for every client: names no brand or organization. Free, read-only.",
+    schema: z.object({}),
+  },
   distribute_find_api: {
     description:
       "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API " +
       "(the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) " +
       "by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). " +
       "Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details " +
-      "and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has.",
+      "and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has. " +
+      "To list the triggers (and which ones a call may fire), use distribute_list_triggers.",
     schema: z.object({
       query: z.string().optional().describe("What you want to do, in plain words."),
       area: z.string().optional().describe("Restrict to one area (as listed with no query), e.g. Leads, Emails, Billing."),
@@ -418,6 +449,9 @@ export async function handleToolCall(
 
     case "distribute_get_lead":
       return handleGetLead(args);
+
+    case "distribute_list_triggers":
+      return handleListTriggers();
 
     case "distribute_find_api":
       return handleFindApi(args);
@@ -541,6 +575,71 @@ async function handleReadSkill(args: Record<string, unknown>) {
   }
   const s = result.data as SkillSummary & { content: string; version?: number };
   return { slug: s.slug, parentSlug: s.parentSlug, title: s.title, description: s.description, version: s.version, content: s.content };
+}
+
+/**
+ * A trigger row as features-service serves it (GET /v1/public/channels `triggers[]`). The whole
+ * channel catalogue is ~180 KB, too large to hand an agent through distribute_call_api for the
+ * 21 triggers it needs: this read keeps the triggers only, and their customer-facing fields.
+ */
+type CatalogueTrigger = {
+  id: string;
+  label: string;
+  description: string | null;
+  type: "outcome" | "condition";
+  outcomeKey: string | null;
+  callable: boolean;
+};
+
+async function readTriggers(): Promise<CatalogueTrigger[]> {
+  const result = await callApi<{ triggers?: unknown }>("/v1/public/channels", { public: true });
+  if (result.error) failWith(result);
+  const rows = (result.data as { triggers?: unknown }).triggers;
+  if (!Array.isArray(rows)) throw new Error("The trigger catalogue (GET /v1/public/channels) answered no `triggers` list.");
+  return rows.map((r) => {
+    const t = r as Record<string, unknown>;
+    if (typeof t.id !== "string" || typeof t.callable !== "boolean" || (t.type !== "outcome" && t.type !== "condition")) {
+      throw new Error(`The trigger catalogue served a row without id, type or callable: ${JSON.stringify(t).slice(0, 300)}`);
+    }
+    return {
+      id: t.id,
+      label: typeof t.label === "string" ? t.label : t.id,
+      description: typeof t.description === "string" ? t.description : null,
+      type: t.type,
+      outcomeKey: typeof t.outcomeKey === "string" ? t.outcomeKey : null,
+      callable: t.callable,
+    };
+  });
+}
+
+async function handleListTriggers() {
+  const triggers = await readTriggers();
+  const view = (t: CatalogueTrigger) => ({
+    id: t.id,
+    name: t.label,
+    description: t.description,
+    type: t.type,
+    ...(t.type === "outcome" ? { outcome: t.outcomeKey } : {}),
+    callable: t.callable,
+  });
+  return {
+    rule: TRIGGER_RULE,
+    callable: triggers.filter((t) => t.callable).map(view),
+    computedByUs: triggers.filter((t) => !t.callable).map(view),
+    howToFire: FIRE_TRIGGER_HOW,
+  };
+}
+
+/** A condition trigger is computed by us: distribute_call_api refuses it before anything reaches the door. */
+function refuseNotCallable(trigger: CatalogueTrigger): never {
+  throw new Error(
+    JSON.stringify({
+      error: "not_callable",
+      trigger: { id: trigger.id, name: trigger.label, type: trigger.type },
+      message: `"${trigger.label}" is computed by us: it fires on its own when its condition holds, and is never fired by a call. Nothing was sent.`,
+      rule: TRIGGER_RULE,
+    }),
+  );
 }
 
 async function handleListWorkflows(args: Record<string, unknown>) {
@@ -1544,6 +1643,13 @@ async function handleCallApi(args: Record<string, unknown>) {
         methods: match.otherMethods,
       }),
     );
+  }
+
+  // The one trigger door: a condition trigger (`callable: false`) is computed by us, refused before the call.
+  if (match.operation.method === "POST" && match.operation.path === "/v1/trigger-events") {
+    const triggerId = (args.body as { triggerId?: unknown } | undefined)?.triggerId;
+    const trigger = typeof triggerId === "string" ? (await readTriggers()).find((t) => t.id === triggerId) : undefined;
+    if (trigger && !trigger.callable) refuseNotCallable(trigger);
   }
 
   const params = new URLSearchParams(inlineQuery ?? "");

@@ -51,7 +51,7 @@ Call `distribute_status` first — it confirms the key reached the gateway, list
 
 ## Tools
 
-There are **18 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
+There are **19 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
 
 **Same scope as the API.** Whatever your key can do on `https://api.distribute.you/v1/*`, it can do from here, and nothing more: the API decides on every call what the key may read or write, and this server never widens or narrows it. Our own internals (prompt text, models, token counts, generation costs, the internal service registry) never come back through it.
 
@@ -77,6 +77,7 @@ Curated tools, for the frequent jobs:
 | `distribute_list_leads` | A brand's leads and where each stands: sent, delivered, clicked, replied, bounced, with dates |
 | `distribute_list_emails` | The emails we wrote for a brand: for each prospect, the first email and every follow-up, subject and body |
 | `distribute_get_lead` | One lead in one call: who they are, where they stand, the emails written for them, and the whole conversation. Takes a lead's `id` or the person's `leadId` (with `campaignId`) |
+| `distribute_list_triggers` | The entry doors a reactive campaign starts on, each with its `type` (`outcome` or `condition`), whether it is `callable`, and how to fire a callable one for a person (`distribute_call_api POST /v1/trigger-events`) |
 
 The method, before acting on a client's ask:
 
@@ -98,6 +99,8 @@ The whole API, by intent:
 **Emails and their status.** `distribute_list_emails` returns each written email with its `sequence`: one entry per step with `bodyText`, `kind` (`first_email` or `follow_up`) and its send `status` (`sent` at `sentAt`, `queued`: goes out in the prospect's business hours, or `stopped`: will not go out), joined from the API's `GET /v1/email-sequences` on `leadId` and step. So "every email we sent for my brand, with what is still queued" is one call. `distribute_get_lead` gives the same for one prospect.
 
 **Two lead ids.** A lead row's `id` is the person on ONE campaign (what `GET /v1/leads/{id}` reads); its `leadId` is the PERSON (what a trigger event's `ranLeads[].leadId`, an email and a timeline name). `distribute_get_lead` takes either as `leadId` (older name `lead_id`): with the `campaignId` passed beside it (a trigger event's `ranLeads[].campaignId`), a person's id is read directly on that campaign (`GET /v1/campaigns/{campaignId}/leads/by-lead/{leadId}`, any campaign size; not on it yet = a clear "not a lead of that campaign"); with only a brandId it is looked up among the brand's newest 1,000 leads, then read by its row `id`. The answer's `note` says which lead row it is. If the status read is refused, the emails still come back, with the refusal in `sendStatusUnavailable`.
+
+**Triggers: which ones a call may fire.** Outcome triggers (an outcome was just reached for a person: Form submitted, Meeting booked, Paid client) are callable: the fact often happens in the client's own tools, so an agent reports it. Condition triggers (an outcome + a delay + "still not" another, a GitHub issue in prod) are computed by us and never fired by a call. A new outcome or trigger is a feature request to the team, never created by a call (owner decision C1, 2026-10-15). features-service serves each trigger's `type` and `callable` (`GET /v1/public/channels` `triggers[]`, ~180 KB whole, which is why `distribute_list_triggers` exists rather than a generic call); campaign-service owns the door, `POST /v1/trigger-events`. Firing goes through the generic `distribute_call_api` (curated tools only read), which refuses a trigger with `callable: false` before calling.
 
 **What a campaign is.** A campaign is what the customer launched: one sales funnel run for one offer of a brand, started or paused as one, with its caps: a max budget and/or a max volume per period ("Max $10/day" when it reaches out on its own, "Up to $20/week" when it acts on what happens). `distribute_list_campaigns` lists those, and only those. Inside, a campaign runs one part per channel step; a part is never listed, counted or named as a campaign. Each campaign says what starts it, `runsWhen` ("Each time: Email Pushed Via API" plus its `trigger` {slug, name} for a reactive one, "On its own, within its caps (no trigger)" for a proactive one), and what it does, `path` (its steps in order), read from the dashboard's own Campaigns table copy (`GET /v1/features/brands/{brandId}/sales-funnel-campaigns?fields=copy`, one call per brand, no money computed). An agent reads the running campaigns before calling anything missing: one may already do what the client asks. If that read is refused, the campaigns still come back, each with `runsWhenUnavailableReason`.
 
