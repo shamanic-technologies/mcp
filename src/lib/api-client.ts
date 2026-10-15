@@ -108,6 +108,42 @@ export async function headApi(
   }
 }
 
+/**
+ * A transport failure's own words ("fetch failed", "other side closed",
+ * "ECONNREFUSED ...") say nothing an agent can act on. The gateway forwards them
+ * as-is when the service behind a route did not answer: 2026-10-14, GET
+ * /v1/offers/{offerId}/sales-funnels answered `500 {"error":"fetch failed"}`
+ * while features-service was being redeployed, and the agent read it as a broken
+ * route. Matched only on a body carrying no `fix` of its own.
+ */
+const TRANSPORT_FAILURE = /^(fetch failed|other side closed|socket hang up|terminated|network error)\b|\b(ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|UND_ERR_[A-Z_]+)\b/i;
+
+export const UNREACHABLE_CODE = "upstream_unreachable";
+export const UNREACHABLE_MESSAGE =
+  "The distribute.you service behind this route did not answer: the connection dropped before any reply. " +
+  "This is not a refusal of the request: the service is usually restarting for a deploy, which takes under a minute.";
+export const UNREACHABLE_FIX =
+  "Retry the same call in about 30 seconds. If it still fails after 2 or 3 tries, narrow the read (a filter such as `q`, or `limit`) and tell the user the service is down.";
+
+function isTransportFailure(body: ApiErrorBody | null | undefined): boolean {
+  if (!body || body.fix) return false;
+  const words = [body.error, body.message].filter((v): v is string => typeof v === "string");
+  return words.some((w) => TRANSPORT_FAILURE.test(w.trim()));
+}
+
+/** The transport failure, named: what happened, raw words kept as `cause`, and what to do. */
+function unreachable(cause: string): ApiErrorBody {
+  return { error: UNREACHABLE_CODE, code: UNREACHABLE_CODE, message: UNREACHABLE_MESSAGE, fix: UNREACHABLE_FIX, cause };
+}
+
+/** "fetch failed (ECONNREFUSED)": undici hides the real reason in `cause`. */
+function describeNetworkError(err: unknown): string {
+  if (!(err instanceof Error)) return "Network error";
+  const cause = (err as { cause?: { code?: unknown; message?: unknown } }).cause;
+  const detail = typeof cause?.code === "string" ? cause.code : typeof cause?.message === "string" ? cause.message : null;
+  return detail ? `${err.message} (${detail})` : err.message;
+}
+
 export async function callApi<T>(
   path: string,
   options: {
@@ -156,6 +192,10 @@ export async function callApi<T>(
       } catch {
         errorBody = text ? { error: text.slice(0, 2000) } : null;
       }
+      if (response.status >= 500 && isTransportFailure(errorBody)) {
+        const cause = String(errorBody?.error ?? errorBody?.message);
+        return { error: UNREACHABLE_CODE, errorBody: unreachable(cause), status: response.status };
+      }
       return {
         error: (typeof errorBody?.error === "string" && errorBody.error) || `HTTP ${response.status}`,
         errorBody: errorBody ?? undefined,
@@ -176,7 +216,8 @@ export async function callApi<T>(
     }
     return { data: data as T, status: response.status };
   } catch (err) {
-    return { error: err instanceof Error ? err.message : "Network error" };
+    // The gateway itself did not answer: same situation, one hop earlier.
+    return { error: UNREACHABLE_CODE, errorBody: unreachable(describeNetworkError(err)) };
   }
 }
 
