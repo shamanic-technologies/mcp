@@ -17,6 +17,7 @@ const mockCallApi = vi.mocked(callApi);
 
 /** Trigger rows exactly as features-service serves them on GET /v1/public/channels (prod, 2026-10-15). */
 const TRIGGERS = [
+  { id: "signed_up", label: "Signup", description: "A prospect created an account.", icon: "user-plus", fromStep: "signup", firedBy: "lead-service", coded: false, origin: "code", kind: "event", params: null, type: "outcome", outcomeKey: "signup", callable: true },
   { id: "form_submitted", label: "Form submitted", description: "A prospect filled in a form.", icon: "clipboard-text", fromStep: "form_submitted", firedBy: "crm-service", coded: true, origin: "code", kind: "event", params: null, type: "outcome", outcomeKey: "form_submitted", callable: true },
   { id: "paid_client", label: "Paid client", description: "A prospect became a paying client.", icon: "currency-dollar", fromStep: "paid_client", firedBy: "crm-service", coded: false, origin: "code", kind: "event", params: null, type: "outcome", outcomeKey: "paid_client", callable: true },
   { id: "email_pushed_via_api", label: "Email Pushed Via API", description: "You pushed an email you wrote, to send as written.", icon: "code", fromStep: null, firedBy: "campaign-service", coded: true, origin: "declared", kind: "reported", params: { reportedBy: "api-service" }, type: "condition", outcomeKey: null, callable: true },
@@ -37,10 +38,17 @@ describe("distribute_list_triggers", () => {
     expect(mockCallApi).toHaveBeenCalledWith("/v1/public/channels", { public: true });
     expect(res.rule).toBe(TRIGGER_RULE);
     expect(res.howToFire).toBe(FIRE_TRIGGER_HOW);
-    expect(res.callable.map((t: any) => t.id)).toEqual(["form_submitted", "paid_client", "email_pushed_via_api"]);
-    expect(res.callable[0]).toEqual({ id: "form_submitted", name: "Form submitted", description: "A prospect filled in a form.", type: "outcome", outcome: "form_submitted", callable: true });
+    expect(res.callable.map((t: any) => t.id)).toEqual(["signed_up", "form_submitted", "paid_client", "email_pushed_via_api"]);
+    expect(res.callable[1]).toEqual({ id: "form_submitted", name: "Form submitted", description: "A prospect filled in a form.", type: "outcome", outcome: "form_submitted", callable: true });
     expect(res.computedByUs).toEqual([
-      { id: "signup_not_paid_24_hours", name: "Signup Not Paid In 24 Hours", description: "A person signed up and did not pay within 24 hours.", type: "condition", callable: false },
+      {
+        id: "signup_not_paid_24_hours",
+        name: "Signup Not Paid In 24 Hours",
+        description: "A person signed up and did not pay within 24 hours.",
+        type: "condition",
+        callable: false,
+        followsFrom: { id: "signed_up", name: "Signup" },
+      },
     ]);
     // Our internals (which service fires it) never leave.
     expect(JSON.stringify(res)).not.toContain("crm-service");
@@ -72,7 +80,7 @@ describe("distribute_call_api on the trigger door", () => {
         path: "/v1/trigger-events",
         body: { triggerId: "signup_not_paid_24_hours", brandId: "b1", offerId: "o1", person: { email: "a@b.co" } },
       }),
-    ).rejects.toThrow(/not_callable.*computed by us/);
+    ).rejects.toThrow(/not_callable.*computed by us.*"reportInstead":\{"id":"signed_up","name":"Signup"/);
     expect(mockCallApi).toHaveBeenCalledTimes(2);
   });
 
@@ -94,7 +102,8 @@ describe("distribute_call_api on the trigger door", () => {
 describe("the trigger rule is said in the tools' own words", () => {
   it("states it once, in each trigger tool", () => {
     expect(TRIGGER_RULE).toMatch(/Outcome triggers .* are callable/);
-    expect(TRIGGER_RULE).toMatch(/Condition triggers computed by us .* `callable: false`/);
+    expect(TRIGGER_RULE).toMatch(/Condition triggers computed by us .* never fired by a call/);
+    expect(TRIGGER_RULE).toContain("fire only one with `callable: true`");
     expect(TRIGGER_RULE).toMatch(/new outcome or trigger is a feature request/);
     expect(toolDefinitions.distribute_list_triggers.description).toContain(TRIGGER_RULE);
     expect(toolDefinitions.distribute_list_triggers.description).toContain(FIRE_TRIGGER_HOW);

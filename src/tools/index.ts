@@ -141,13 +141,14 @@ export const NO_HUMAN_NEEDED =
 export const FIRE_TRIGGER_HOW =
   "distribute_call_api POST /v1/trigger-events with body {triggerId, brandId, offerId, person: {email, name?}, item?, idempotencyKey?} " +
   "(the brand's offers: GET /v1/brands/{id}/offers). Every live campaign of that offer starting on the trigger runs for the person, within its caps; " +
-  "the answer's `event.outcome` says `ran` or `skipped` with the reason (e.g. `no_campaign`). A `callable: false` trigger is refused before the call: " +
-  "tell the user it is computed by us and fires on its own.";
+  "the answer's `event.outcome` says `ran` or `skipped` with the reason (`no_campaign`: no campaign starts on it; `campaign_off`: the ones that do are paused). " +
+  "A `callable: false` trigger is refused before the call: tell the user it is computed by us and fires on its own, and offer to report the outcome it `followsFrom` if that really happened.";
 
 export const TRIGGER_RULE =
   "Outcome triggers (an outcome was just reached for a person: Form submitted, Meeting booked, Paid client...) are callable: " +
   "fire one when that fact happens in the client's own tools. Condition triggers computed by us (an outcome + a delay + \"still not\" another, " +
-  "a GitHub issue in prod...) carry `callable: false` and are never fired by a call. Each trigger's `callable` is the answer. " +
+  "a GitHub issue in prod...) are never fired by a call: report the outcome they wait on instead, they follow from it. " +
+  "Each trigger's `callable` decides: fire only one with `callable: true`. " +
   "A new outcome or trigger is a feature request to the distribute.you team, never created by a call.";
 
 // Tool definitions with Zod schemas
@@ -589,6 +590,8 @@ type CatalogueTrigger = {
   type: "outcome" | "condition";
   outcomeKey: string | null;
   callable: boolean;
+  /** For a computed condition: the step it starts after (a delay's `afterStep`, else its `fromStep`). */
+  afterStep: string | null;
 };
 
 async function readTriggers(): Promise<CatalogueTrigger[]> {
@@ -608,20 +611,38 @@ async function readTriggers(): Promise<CatalogueTrigger[]> {
       type: t.type,
       outcomeKey: typeof t.outcomeKey === "string" ? t.outcomeKey : null,
       callable: t.callable,
+      afterStep:
+        t.params && typeof (t.params as Record<string, unknown>).afterStep === "string"
+          ? ((t.params as Record<string, unknown>).afterStep as string)
+          : typeof t.fromStep === "string" ? t.fromStep : null,
     };
   });
 }
 
+/**
+ * The callable outcome trigger a computed condition follows from ("Signup Not Paid In 24 Hours"
+ * starts after a Signup): what the agent reports instead, when the user asks to fire the condition.
+ */
+function reportInstead(trigger: CatalogueTrigger, triggers: CatalogueTrigger[]): { id: string; name: string } | null {
+  if (trigger.callable || !trigger.afterStep) return null;
+  const outcome = triggers.find((t) => t.type === "outcome" && t.callable && t.outcomeKey === trigger.afterStep);
+  return outcome ? { id: outcome.id, name: outcome.label } : null;
+}
+
 async function handleListTriggers() {
   const triggers = await readTriggers();
-  const view = (t: CatalogueTrigger) => ({
-    id: t.id,
-    name: t.label,
-    description: t.description,
-    type: t.type,
-    ...(t.type === "outcome" ? { outcome: t.outcomeKey } : {}),
-    callable: t.callable,
-  });
+  const view = (t: CatalogueTrigger) => {
+    const instead = reportInstead(t, triggers);
+    return {
+      id: t.id,
+      name: t.label,
+      description: t.description,
+      type: t.type,
+      ...(t.type === "outcome" ? { outcome: t.outcomeKey } : {}),
+      callable: t.callable,
+      ...(instead ? { followsFrom: instead } : {}),
+    };
+  };
   return {
     rule: TRIGGER_RULE,
     callable: triggers.filter((t) => t.callable).map(view),
@@ -631,12 +652,16 @@ async function handleListTriggers() {
 }
 
 /** A condition trigger is computed by us: distribute_call_api refuses it before anything reaches the door. */
-function refuseNotCallable(trigger: CatalogueTrigger): never {
+function refuseNotCallable(trigger: CatalogueTrigger, triggers: CatalogueTrigger[]): never {
+  const instead = reportInstead(trigger, triggers);
   throw new Error(
     JSON.stringify({
       error: "not_callable",
       trigger: { id: trigger.id, name: trigger.label, type: trigger.type },
       message: `"${trigger.label}" is computed by us: it fires on its own when its condition holds, and is never fired by a call. Nothing was sent.`,
+      ...(instead
+        ? { reportInstead: { ...instead, why: `"${trigger.label}" follows from "${instead.name}": if that really happened for the person, report it, and the rest follows on its own.` } }
+        : {}),
       rule: TRIGGER_RULE,
     }),
   );
@@ -1648,8 +1673,9 @@ async function handleCallApi(args: Record<string, unknown>) {
   // The one trigger door: a condition trigger (`callable: false`) is computed by us, refused before the call.
   if (match.operation.method === "POST" && match.operation.path === "/v1/trigger-events") {
     const triggerId = (args.body as { triggerId?: unknown } | undefined)?.triggerId;
-    const trigger = typeof triggerId === "string" ? (await readTriggers()).find((t) => t.id === triggerId) : undefined;
-    if (trigger && !trigger.callable) refuseNotCallable(trigger);
+    const triggers = typeof triggerId === "string" ? await readTriggers() : [];
+    const trigger = triggers.find((t) => t.id === triggerId);
+    if (trigger && !trigger.callable) refuseNotCallable(trigger, triggers);
   }
 
   const params = new URLSearchParams(inlineQuery ?? "");
