@@ -149,7 +149,8 @@ export const TRIGGER_RULE =
   "fire one when that fact happens in the client's own tools. Condition triggers computed by us (an outcome + a delay + \"still not\" another, " +
   "a GitHub issue in prod...) are never fired by a call: report the outcome they wait on instead, they follow from it. " +
   "Each trigger's `callable` decides: fire only one with `callable: true`. " +
-  "A new outcome or trigger is a feature request to the distribute.you team, never created by a call.";
+  "A new outcome or trigger is a feature request to the distribute.you team, never created by a call: file it with distribute_call_api " +
+  "`POST /v1/staff-requests` (distribute_describe_api for its body), naming the event, where it comes from and an example; the `staff-requests` skill says how.";
 
 // Tool definitions with Zod schemas
 export const toolDefinitions = {
