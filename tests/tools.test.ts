@@ -432,7 +432,7 @@ describe("distribute_campaign_stats reads success first", () => {
     routeStats(stats());
 
     const out = (await part()) as Record<string, unknown>;
-    const keys = Object.keys(out).filter((k) => k !== "bringsIn" && k !== "channel");
+    const keys = Object.keys(out).filter((k) => k !== "outcome" && k !== "bringsIn" && k !== "channel");
 
     expect(keys[0]).toBe("headline");
     expect(keys[1]).toBe("summary");
@@ -571,6 +571,21 @@ describe("distribute_campaign_stats reads success first", () => {
     });
 
     expect((await part()).bringsIn).toBe("Positive reply");
+  });
+
+  // Standard vocabulary (owner 2026-10-15): a part is named by its OUTCOME; `bringsIn` stays as the older name.
+  it("names each part by its `outcome`, and still under the older `bringsIn`", async () => {
+    routeApi({ "/v1/sales-funnel-campaigns/c1": { salesFunnelCampaign: { ...bliss, id: "c1" } }, "/v1/public/channels": catalogue, "/v1/campaigns/u-email/stats": stats(), "/v1/campaigns/u-apollo/stats": stats({ campaignId: "u-apollo" }) });
+
+    const out = (await handleToolCall("distribute_campaign_stats", { campaignId: "c1" })) as { results: Array<Record<string, any>> };
+
+    expect(out.results.map((r) => r.outcome)).toEqual(["Positive reply", "Lead found"]);
+    expect(out.results.map((r) => r.bringsIn)).toEqual(out.results.map((r) => r.outcome));
+    expect(toolDefinitions.distribute_campaign_stats.description).toContain("`outcome`");
+  });
+
+  it("describes workflow ranking as a multi-armed bandit, never a pick", () => {
+    expect(toolDefinitions.distribute_list_workflows.description).toMatch(/multi-armed bandit/);
   });
 
   it("says plainly when nothing has run in the campaign yet", async () => {
