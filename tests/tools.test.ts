@@ -10,7 +10,7 @@ vi.mock("../src/lib/api-client.js", () => ({
   isConfigured: vi.fn(() => true),
 }));
 
-import { handleToolCall, toolDefinitions } from "../src/tools/index.js";
+import { handleToolCall, toolDefinitions, TRIGGER_RULE } from "../src/tools/index.js";
 import { callApi } from "../src/lib/api-client.js";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
@@ -582,6 +582,10 @@ describe("distribute_campaign_stats reads success first", () => {
     expect(out.results.map((r) => r.outcome)).toEqual(["Positive reply", "Lead found"]);
     expect(out.results.map((r) => r.bringsIn)).toEqual(out.results.map((r) => r.outcome));
     expect(toolDefinitions.distribute_campaign_stats.description).toContain("`outcome`");
+  });
+
+  it("says where a new outcome or trigger is filed: the feature-request route", () => {
+    expect(TRIGGER_RULE).toContain("POST /v1/staff-requests");
   });
 
   it("describes workflow ranking as a multi-armed bandit, never a pick", () => {
