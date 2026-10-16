@@ -246,6 +246,8 @@ export const toolDefinitions = {
   distribute_list_workflows: {
     description:
       "List all available workflows. Includes styled workflows written in the style of industry experts (e.g. Hormozi). " +
+      "Which workflow runs on a step is never picked by you or the client: the platform ranks the workflows of each step like a multi-armed bandit " +
+      "(the best return on spend runs, newer ones still get tried until measured). A step that must behave a certain way is a play (distribute_read_skill `catalogue-plays`). " +
       TARGET_HINT,
     schema: z.object({
       human_id: z.string().optional().describe("Filter by human expert ID (for styled workflows)"),
@@ -259,7 +261,7 @@ export const toolDefinitions = {
       "and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. " +
       "A campaign with no max budget spends nothing. Report each campaign by its name. " +
       "Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; " +
-      "\"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead found → Sales Cold Email Outreach → Positive reply → Paid client\"). " +
+      "\"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead → Sales Cold Email Outreach → Positive reply → Paid client\"; the outcome names are the platform's own, read as served). " +
       "Every trigger a campaign can start on, and which ones you may fire: distribute_list_triggers. " +
       "Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask " +
       "(e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). " +
@@ -272,7 +274,7 @@ export const toolDefinitions = {
   distribute_campaign_stats: {
     description:
       "Get one campaign's results: pass `campaignId`, the campaign id from distribute_list_campaigns (the older name `campaign_id` still works). A campaign runs as one; its results come in `results`, " +
-      "one entry per thing it brings in (`bringsIn`, such as a positive reply or a lead found) with the channel doing it (`channel`). " +
+      "one entry per outcome it brings in (`outcome`, such as Positive reply or Lead; `bringsIn` is the older name of the same value) with the channel doing it (`channel`). " +
       "An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. " +
       "Report the campaign by its name and never call an entry of `results` a campaign. " +
       "Report meetings, positive replies and delivery rate first, then volume and cost; " +
@@ -912,7 +914,7 @@ type PublicCatalogue = {
 };
 
 /** What a part brings in and the channel doing it, read off the platform's public catalogue. */
-function partNames(catalogue: PublicCatalogue, u: FunnelUnit): { bringsIn: string | null; channel: string | null } {
+function partNames(catalogue: PublicCatalogue, u: FunnelUnit): { outcome: string | null; bringsIn: string | null; channel: string | null } {
   const channel = (catalogue.channels ?? []).find((c) => c.slug === u.featureSlug);
   // An outbound step has two spellings while the platform migrates; the catalogue serves the pairs.
   const twins = new Set([u.legKey]);
@@ -921,8 +923,10 @@ function partNames(catalogue: PublicCatalogue, u: FunnelUnit): { bringsIn: strin
     if (p.legKey === u.legKey && p.legacyLegKey) twins.add(p.legacyLegKey);
   }
   const step = (channel?.stepTransitions ?? []).find((t) => t.legKey && twins.has(t.legKey));
-  const names = { bringsIn: step?.to?.label ?? null, channel: channel?.name ?? null };
-  if (!names.bringsIn || !names.channel) console.error("[mcp] a campaign part is not in the public catalogue", { featureSlug: u.featureSlug, legKey: u.legKey });
+  // `outcome` is the standard name (owner 2026-10-15); `bringsIn` stays for callers that read it.
+  const outcome = step?.to?.label ?? null;
+  const names = { outcome, bringsIn: outcome, channel: channel?.name ?? null };
+  if (!names.outcome || !names.channel) console.error("[mcp] a campaign part is not in the public catalogue", { featureSlug: u.featureSlug, legKey: u.legKey });
   return names;
 }
 
@@ -969,7 +973,7 @@ async function handleCampaignStats(args: Record<string, unknown>) {
   );
 
   const state = campaign.status === "ongoing" ? "running" : campaign.status;
-  const lines = results.map((r) => `${r.bringsIn ?? "Unnamed step"} (${r.channel ?? "unnamed channel"}): ${r.headline}`);
+  const lines = results.map((r) => `${r.outcome ?? "Unnamed outcome"} (${r.channel ?? "unnamed channel"}): ${r.headline}`);
   return {
     headline:
       results.length === 0
