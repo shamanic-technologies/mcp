@@ -395,8 +395,8 @@ describe("the emails of a brand", () => {
       subject: "skip the warmup",
       bodyText: "Hi",
       sequence: [
-        { step: 1, bodyText: "Hi", daysSinceLastStep: 0, kind: "first_email", status: "sent", sentAt: "2026-10-12T07:00:00.000Z" },
-        { step: 2, bodyText: "Following up", daysSinceLastStep: 3, kind: "follow_up", status: "queued", sentAt: null },
+        { step: 1, bodyText: "Hi", daysSinceLastStep: 0, kind: "first_email", status: "sent", sentAt: "2026-10-12T07:00:00.000Z", bouncedAt: null },
+        { step: 2, bodyText: "Following up", daysSinceLastStep: 3, kind: "follow_up", status: "queued", sentAt: null, bouncedAt: null },
       ],
       extraField: "kept",
     });
@@ -413,6 +413,13 @@ describe("the emails of a brand", () => {
     // Found on page 2: page 3 (cursor k2) is never asked for.
     expect(mockCallApi).toHaveBeenCalledTimes(3);
     expect(res.emails[0]!.sequence.map((s) => s.status)).toEqual(["sent", "queued"]);
+  });
+
+  it("shows a step the receiving server refused as bounced, with when it went out and when it was refused", async () => {
+    const bounced = { step: 1, kind: "first_email", status: "bounced", sentAt: "2026-10-15T07:00:00.000Z", bouncedAt: "2026-10-15T07:00:09.000Z" };
+    route([{ data: { sequences: [{ ...sendRecord, steps: [bounced, sendRecord.steps[1]] }], nextCursor: null }, status: 200 }]);
+    const res = (await handleToolCall("distribute_list_emails", { brandId: "b1" })) as { emails: Array<{ sequence: Array<Record<string, unknown>> }> };
+    expect(res.emails[0]!.sequence[0]).toMatchObject({ status: "bounced", sentAt: "2026-10-15T07:00:00.000Z", bouncedAt: "2026-10-15T07:00:09.000Z" });
   });
 
   it("picks the sequence of the email's own campaign when a prospect was emailed twice", async () => {
@@ -465,7 +472,7 @@ describe("one lead", () => {
       campaignId: "c1",
       leadEmail: "a@b.co",
       subject: "Hi",
-      sequence: [{ step: 1, bodyText: "Hi", kind: "first_email", status: "sent", sentAt: "t" }],
+      sequence: [{ step: 1, bodyText: "Hi", kind: "first_email", status: "sent", sentAt: "t", bouncedAt: null }],
     });
     expect(res.conversation).toBeNull();
     expect(res.conversationUnavailable).toEqual({ error: "thread_unavailable", code: "thread_unavailable" });

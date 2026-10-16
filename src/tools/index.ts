@@ -324,7 +324,8 @@ export const toolDefinitions = {
     description:
       "List the cold emails we wrote and sent for a brand: for each prospect, the first email and every follow-up " +
       "(`subject`, then `sequence`: one entry per step with its `bodyText`, its `kind` (first_email or follow_up) and its send `status`: " +
-      "`sent` at `sentAt`, `queued` (goes out in the prospect's business hours) or `stopped` (will not go out: reply, bounce, opt-out, meeting, sequence stopped)), " +
+      "`sent` at `sentAt` (it went out and nothing refused it), `bounced` (it went out at `sentAt` but the receiving server refused it at `bouncedAt`: the prospect never got it, never report it as delivered), " +
+      "`queued` (goes out in the prospect's business hours) or `stopped` (will not go out: reply, bounce, opt-out, meeting, sequence stopped)), " +
       "with who it went to (`leadEmail`, lead name, title, company, `leadId`). Use it to answer \"what did you send for my brand, and what is still queued\". " +
       "Replies and delivery are on distribute_list_leads / distribute_get_lead. " +
       "Pages with `limit` and `offset`. " +
@@ -340,7 +341,7 @@ export const toolDefinitions = {
   distribute_get_lead: {
     description:
       "Everything about ONE lead in one call: who they are and where they stand (sent, delivered, replied...), the emails we wrote for them " +
-      "(first email and follow-ups, subject and body, each with its send status: sent at sentAt, queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). " +
+      "(first email and follow-ups, subject and body, each with its send status: sent at sentAt, bounced (went out at sentAt, refused by the receiving server at bouncedAt: not delivered), queued or stopped), and the conversation (every message we sent and every reply they wrote, oldest first). " +
       "Pass `leadId`: either a lead's `id` from distribute_list_leads (this lead on one campaign), or the person's id: " +
       "a list row's `leadId`, or the `ranLeads[].leadId` a trigger event (POST /v1/trigger-events) answers. " +
       "With the person's id, also pass `campaignId` (the `ranLeads[].campaignId` beside it, or a lead's `campaignId`) or brandId, " +
@@ -1213,11 +1214,12 @@ function emailForAssistant(email: Record<string, unknown>) {
 
 /**
  * What happened to each email step, as the API serves it on GET /v1/email-sequences
- * (instantly-service owns it): `sent` at `sentAt`, `queued` (goes out in the
+ * (instantly-service owns it): `sent` at `sentAt`, `bounced` (went out at `sentAt`,
+ * refused by the receiving server at `bouncedAt`), `queued` (goes out in the
  * prospect's business hours), or `stopped` (will not go out). One row per sequence;
  * a prospect emailed again after the re-contact window has two.
  */
-type SendStep = { step: number; kind: string; status: string; sentAt: string | null };
+type SendStep = { step: number; kind: string; status: string; sentAt: string | null; bouncedAt?: string | null };
 type SendSequence = { leadId: string | null; leadEmail: string | null; campaignId: string | null; steps: SendStep[] };
 type SendRecords = { byLead: Map<string, SendSequence[]>; complete: boolean; error?: unknown };
 
@@ -1258,7 +1260,7 @@ async function sendRecordsFor(brandId: string, orgId: unknown, wanted: Set<strin
 /**
  * A written email with what happened to each of its steps, joined on leadId and
  * step (the sequence of the same campaign when a prospect has several). Every
- * written step carries `kind`, `status` and `sentAt`; a step the sequence holds
+ * written step carries `kind`, `status`, `sentAt` and `bouncedAt`; a step the sequence holds
  * but the written email does not is listed after them, with no body.
  */
 function withSendStatus(email: Record<string, unknown>, records: SendRecords): Record<string, unknown> {
@@ -1280,11 +1282,11 @@ function withSendStatus(email: Record<string, unknown>, records: SendRecords): R
   const byStep = new Map(seq.steps.map((st) => [st.step, st]));
   const steps: Array<Record<string, unknown>> = written.map((w) => {
     const st = byStep.get(Number(w.step));
-    return { ...w, kind: st?.kind ?? null, status: st?.status ?? null, sentAt: st?.sentAt ?? null };
+    return { ...w, kind: st?.kind ?? null, status: st?.status ?? null, sentAt: st?.sentAt ?? null, bouncedAt: st?.bouncedAt ?? null };
   });
   const writtenSteps = new Set(written.map((w) => Number(w.step)));
   for (const st of seq.steps) {
-    if (!writtenSteps.has(st.step)) steps.push({ step: st.step, bodyText: null, kind: st.kind, status: st.status, sentAt: st.sentAt });
+    if (!writtenSteps.has(st.step)) steps.push({ step: st.step, bodyText: null, kind: st.kind, status: st.status, sentAt: st.sentAt, bouncedAt: st.bouncedAt ?? null });
   }
   return { ...email, leadEmail: seq.leadEmail, sequence: steps };
 }
