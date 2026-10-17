@@ -186,6 +186,13 @@ export async function callApi<T>(
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
+      // A 5xx answered with an HTML page is the edge's own error page (Cloudflare "502: Bad gateway"),
+      // not an answer from the service: 2026-10-17 an agent got 3 KB of HTML for a correction while
+      // the service behind it timed out. Named like any other transport failure.
+      if (response.status >= 500 && /^\s*<(!doctype|html)/i.test(text)) {
+        const title = /<title>([^<]*)<\/title>/i.exec(text)?.[1]?.trim();
+        return { error: UNREACHABLE_CODE, errorBody: unreachable(`HTTP ${response.status} edge error page${title ? `: ${title}` : ""}`), status: response.status };
+      }
       let errorBody: ApiErrorBody | null = null;
       try {
         errorBody = text ? (JSON.parse(text) as ApiErrorBody) : null;

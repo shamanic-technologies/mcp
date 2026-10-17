@@ -152,6 +152,19 @@ export const TRIGGER_RULE =
   "A new outcome or trigger is a feature request to the distribute.you team, never created by a call: file it with distribute_call_api " +
   "`POST /v1/staff-requests` (distribute_describe_api for its body), naming the event, where it comes from and an example; the `staff-requests` skill says how.";
 
+/**
+ * The four tags crm-service puts on a person (CONNECTION-TAGS-1017): personal (judged against the USER who
+ * connected the account) or professional (judged against the BRAND). Said the same way in every people tool.
+ */
+export const PEOPLE_TAGS = ["personal_to_user", "personal_not_to_user", "professional_to_brand", "professional_not_to_brand"] as const;
+export const PEOPLE_TAG_MEANING: Record<(typeof PEOPLE_TAGS)[number], string> = {
+  personal_to_user: "personal: family or a friend of the user who connected the account",
+  personal_not_to_user: "personal, but not about that user (someone else's private life)",
+  professional_to_brand: "work, about this brand: a prospect, client, user or partner",
+  professional_not_to_brand: "work, about something else: a supplier, the user's other activities, a bank...",
+};
+const PEOPLE_TAG_WORDS = PEOPLE_TAGS.map((t) => `\`${t}\` (${PEOPLE_TAG_MEANING[t]})`).join(", ");
+
 // Tool definitions with Zod schemas
 export const toolDefinitions = {
   distribute_status: {
@@ -364,6 +377,117 @@ export const toolDefinitions = {
       FIRE_TRIGGER_HOW + " The same for every client: names no brand or organization. Free, read-only.",
     schema: z.object({}),
   },
+  distribute_find_people: {
+    description:
+      "Find the people a brand deals with (from Gmail, WhatsApp and other chats, the CRM, Stripe, signups...), one entry per real person, " +
+      "and read how we see each one: `tags` (who they are to the user and to the brand: " + PEOPLE_TAG_WORDS + ") " +
+      "and `companies` (the companies they speak for at work, each with its `companyId` and `domain`). " +
+      "Use it to find the person the user talks about (\"Mom\", \"Jane from Acme\", \"jane@acme.com\", \"+33612345678\") before correcting anything: " +
+      "`q` matches a name, an email, a phone, a company or words from their messages. Each entry carries the `personId` the correction tools take. " +
+      "A tag or company the user stated themselves says `statedByUser: true`. " +
+      "`scope.status` `building` means the brand's people are still being gathered: ask again in a minute. " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand whose people to search (from distribute_status)."),
+      q: z.string().optional().describe("Who to find: a name, an email, a phone (4+ digits), a company or words they wrote. Omit for the most recent people."),
+      limit: z.number().int().min(1).max(100).optional().describe("People per page (default 20, max 100)."),
+      offset: z.number().int().min(0).optional().describe("How many to skip (pagination)."),
+    }),
+  },
+  distribute_list_people_companies: {
+    description:
+      "List the companies a brand's people speak for at work, most people first: each with its `companyId`, its `domains`, how many of the brand's people " +
+      "speak for it (`people`) and in what capacity (`tags`: about this brand, or about something else, with how many carry each). " +
+      "Use it for \"which companies do my contacts work for?\" or to find a company's id before removing it from a person. " +
+      "To see WHO works there, search the people with distribute_find_people (q = the company's domain). " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand whose people's companies to list (from distribute_status)."),
+      limit: z.number().int().min(1).max(1000).optional().describe("Companies per page (default 100)."),
+      offset: z.number().int().min(0).optional().describe("How many to skip (pagination)."),
+    }),
+  },
+  distribute_correct_person: {
+    description:
+      "Fix how we see a person, or an email domain, when the user says we got it wrong. Only call it when the user asks for the change; say what you are about to change first. " +
+      "One fix per call (`change`): " +
+      "`add_tag` / `remove_tag` with `personId` and `tag` (\"Mom is a client of mine, not family\" = remove_tag personal_to_user, then add_tag professional_to_brand: two calls); " +
+      "`add_company` with `personId` and the company's `domain` or website (\"she works at Acme\": acme.com), optionally `tags` for how they speak for it; " +
+      "`remove_company` with `personId` and `companyId` (\"she left Acme\": the id from the person's `companies`); " +
+      "`domain_is` with `domain` and `domainKind`: `mailbox_provider` (a public mailbox like gmail.com, its users are not one company) or `organization` (\"mybiz.co is a company, not a public mailbox\"). " +
+      "Tags: " + PEOPLE_TAG_WORDS + ". " +
+      "The user's word wins over our automatic reading until undone; a newer fix on the same thing takes back the older one (an add takes back an earlier remove of that tag or company, and the reverse): " +
+      "read distribute_list_people_corrections first to see what the user already stated, removals included (distribute_find_people shows only what a person carries now). " +
+      "It shows on the people within about a minute (re-read with distribute_find_people). The same fix twice answers `duplicate: true`. " +
+      "Keep the returned `correctionId`: \"undo that\" = distribute_undo_people_correction with it. " +
+      "Refusals come back with their `reason`: `person_not_found` (search again with distribute_find_people), `company_unresolved` (no company is known for that domain: check the spelling or use the website), " +
+      "`tags_required` (say how the person speaks for that company: professional_to_brand and/or professional_not_to_brand), `invalid_correction` (a field is missing for that change). " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand the person belongs to (from distribute_status)."),
+      change: z.enum(["add_tag", "remove_tag", "add_company", "remove_company", "domain_is"]).describe("What to fix (see the description)."),
+      personId: z.string().optional().describe("The person, from distribute_find_people. Every change but `domain_is`."),
+      tag: z.enum(PEOPLE_TAGS).optional().describe("add_tag / remove_tag: the tag to add or remove."),
+      domain: z.string().optional().describe("add_company: the company's domain or website. domain_is: the email domain (e.g. mybiz.co)."),
+      companyId: z.string().optional().describe("remove_company: the company's `companyId` from the person's `companies`."),
+      tags: z.array(z.enum(PEOPLE_TAGS)).optional().describe("add_company: how the person speaks for it (professional_to_brand and/or professional_not_to_brand). Default: their own work tags."),
+      domainKind: z.enum(["mailbox_provider", "organization"]).optional().describe("domain_is: `mailbox_provider` (a public mailbox) or `organization` (a company)."),
+      reason: z.string().optional().describe("Why, in the user's words (kept with the fix)."),
+    }),
+  },
+  distribute_list_people_corrections: {
+    description:
+      "List every fix stated on a brand's people, newest first, undone ones included: `corrections` (tags, companies, domain verdicts; each with its `correctionId`, " +
+      "`change`, the person, `reason`, when, and `undoneAt` once taken back) and `merges` (two people stated as one, each with its `mergeId`). " +
+      "Use it for \"what did I change?\" or to find the fix to take back when the user says \"undo that\" about an earlier one. " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand whose fixes to list (from distribute_status)."),
+    }),
+  },
+  distribute_undo_people_correction: {
+    description:
+      "Take back a fix made with distribute_correct_person, when the user says \"undo that\" or \"put it back\": our automatic reading applies again within about a minute. " +
+      "Pass its `correctionId` (from the fix's answer, or distribute_list_people_corrections). A fix made of two calls (remove a tag, add another) is undone with two calls, in any order. " +
+      "Undo goes back to our AUTOMATIC reading, not to an earlier fix this one took back: if the user had stated something before (listed as undone at the moment this fix was made), " +
+      "say so and, when the user wants that back, state it again with distribute_correct_person. " +
+      "The fix stays listed as undone. Undoing twice answers `duplicate: true`; an unknown id is refused `correction_not_found`. " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand the fix was made on (from distribute_status)."),
+      correctionId: z.string().describe("The fix to take back."),
+    }),
+  },
+  distribute_merge_people: {
+    description:
+      "State that two people of a brand are the same human (\"these two are the same person\": a WhatsApp chat with a number never saved and the same person on Gmail). " +
+      "Only call it when the user says so. Pass both `personIds` from distribute_find_people. They show as one person within about a minute. " +
+      "Keep the returned `mergeId`: \"undo that\" = distribute_undo_people_merge. " +
+      "Refusals come back with their `reason`: `person_not_found`, `same_person` (both ids are already the same person), `already_one_person`, `different_brand`. " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand both people belong to (from distribute_status)."),
+      personIds: z.array(z.string()).length(2).describe("The two people's `personId`, from distribute_find_people."),
+      reason: z.string().optional().describe("Why, in the user's words."),
+    }),
+  },
+  distribute_undo_people_merge: {
+    description:
+      "Split back two people stated as one with distribute_merge_people (\"they are not the same person\", \"undo that\"). Each gets back their own person within about a minute. " +
+      "Pass its `mergeId` (from the merge's answer, or distribute_list_people_corrections). Undoing twice answers `duplicate: true`; an unknown id is refused `merge_not_found`. " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand the merge was made on (from distribute_status)."),
+      mergeId: z.string().describe("The merge to take back."),
+    }),
+  },
   distribute_find_api: {
     description:
       "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API " +
@@ -457,6 +581,27 @@ export async function handleToolCall(
 
     case "distribute_list_triggers":
       return handleListTriggers();
+
+    case "distribute_find_people":
+      return handleFindPeople(args);
+
+    case "distribute_list_people_companies":
+      return handleListPeopleCompanies(args);
+
+    case "distribute_correct_person":
+      return handleCorrectPerson(args);
+
+    case "distribute_list_people_corrections":
+      return handleListPeopleCorrections(args);
+
+    case "distribute_undo_people_correction":
+      return handleUndoPeopleCorrection(args);
+
+    case "distribute_merge_people":
+      return handleMergePeople(args);
+
+    case "distribute_undo_people_merge":
+      return handleUndoPeopleMerge(args);
 
     case "distribute_find_api":
       return handleFindApi(args);
@@ -1540,6 +1685,203 @@ async function handlePrepaidStatus(args: Record<string, unknown>) {
   const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/prepaid_status", args));
   if (result.error) failWhole(result);
   return result.data;
+}
+
+// ── People: who they are to the user and the brand, and the user's fixes ──────
+
+/** What the agent does next on each refusal crm-service states (`{ type: "refused", reason, error }`). */
+const PEOPLE_REFUSAL_FIX: Record<string, string> = {
+  person_not_found: "No such person in this brand: search again with distribute_find_people and use the `personId` it returns.",
+  company_unresolved: "No company is known for that domain: check the spelling, or pass the company's website.",
+  tags_required: "Say how the person speaks for that company: pass `tags` with professional_to_brand and/or professional_not_to_brand.",
+  invalid_correction: "A field this change needs is missing: read the tool description for what each `change` takes.",
+  correction_not_found: "No such fix in this brand: list them with distribute_list_people_corrections.",
+  merge_not_found: "No such merge in this brand: list them with distribute_list_people_corrections.",
+  same_person: "Both ids are already the same person: nothing to merge.",
+  already_one_person: "These two are already shown as one person: nothing to merge.",
+  different_brand: "The two people belong to different brands: only people of one brand can be merged.",
+};
+
+/**
+ * A people refusal, readable: crm-service's body carries `reason` (not the gateway's `code`), so
+ * `failWith` would keep only its `error` sentence. Kept whole, with what to do next.
+ */
+function failPeople(result: { error?: string; errorBody?: ApiErrorBody; status?: number }): never {
+  const body = result.errorBody;
+  const reason = typeof body?.reason === "string" ? body.reason : null;
+  if (!reason) failWith(result);
+  throw new Error(
+    JSON.stringify({
+      status: result.status ?? null,
+      ...body,
+      reason,
+      ...(PEOPLE_REFUSAL_FIX[reason] ? { fix: PEOPLE_REFUSAL_FIX[reason] } : {}),
+    }),
+  );
+}
+
+/** A people write: the brand travels in the query (it picks the organization) AND the body (crm-service reads it there). */
+async function postPeople(path: string, body: Record<string, unknown>, args: Record<string, unknown>) {
+  const result = await callApi<Record<string, unknown>>(withTarget(path, args), { method: "POST", body });
+  if (result.error) failPeople(result);
+  return result.data as Record<string, unknown>;
+}
+
+type PersonTag = { tag: string; basis?: Array<{ kind?: string; ref?: string }> };
+
+/** A tag in words, and whether the user stated it (a `user_correction` basis, ref = the fix's id). */
+function tagForAssistant(t: PersonTag) {
+  const fixes = (t.basis ?? []).filter((b) => b.kind === "user_correction").map((b) => b.ref);
+  return {
+    tag: t.tag,
+    meaning: PEOPLE_TAG_MEANING[t.tag as keyof typeof PEOPLE_TAG_MEANING] ?? null,
+    statedByUser: fixes.length > 0,
+    ...(fixes.length ? { correctionIds: fixes } : {}),
+  };
+}
+
+/** One person as an assistant reads it: who, how to reach them, their tags and companies. */
+export function personForAssistant(p: Record<string, unknown>) {
+  const orgs = (p.organizations ?? []) as Array<{ companyId: string; domain: string; evidence?: Array<{ kind?: string }>; tags?: PersonTag[] }>;
+  return {
+    personId: p.personId,
+    name: p.displayName ?? null,
+    company: p.company ?? null,
+    emails: p.emails ?? [],
+    phones: p.phones ?? [],
+    foundIn: p.sources ?? [],
+    lastActivityAt: p.lastActivityAt ?? null,
+    state: p.state ?? null,
+    tags: ((p.connectionTags ?? []) as PersonTag[]).map(tagForAssistant),
+    companies: orgs.map((o) => ({
+      companyId: o.companyId,
+      domain: o.domain,
+      statedByUser: (o.evidence ?? []).some((e) => e.kind === "user"),
+      tags: (o.tags ?? []).map((t) => t.tag),
+    })),
+    ...(Array.isArray(p.matches) && p.matches.length ? { matches: p.matches } : {}),
+  };
+}
+
+async function handleFindPeople(args: Record<string, unknown>) {
+  const brandId = idArg(args, "brandId", "brand_id");
+  const params = new URLSearchParams({ brandId, limit: String(args.limit ?? 20) });
+  if (typeof args.q === "string" && args.q.trim()) params.set("q", args.q.trim());
+  if (typeof args.offset === "number") params.set("offset", String(args.offset));
+  const result = await callApi<Record<string, unknown>>(withTarget(`/v1/orgs/people?${params}`, { orgId: args.orgId }));
+  if (result.error) failPeople(result);
+  const data = (result.data ?? {}) as Record<string, unknown>;
+  const people = ((data.people ?? []) as Record<string, unknown>[]).map(personForAssistant);
+  return {
+    brandId,
+    scope: data.scope ?? null,
+    total: data.total ?? null,
+    nextOffset: data.nextOffset ?? null,
+    people,
+    ...(people.length === 0 && typeof args.q === "string" ? { note: "Nobody matches: try another spelling, an email, a phone or a company." } : {}),
+  };
+}
+
+async function handleListPeopleCompanies(args: Record<string, unknown>) {
+  const brandId = idArg(args, "brandId", "brand_id");
+  const params = new URLSearchParams({ brandId });
+  if (typeof args.limit === "number") params.set("limit", String(args.limit));
+  if (typeof args.offset === "number") params.set("offset", String(args.offset));
+  const result = await callApi<Record<string, unknown>>(withTarget(`/v1/orgs/people/organizations?${params}`, { orgId: args.orgId }));
+  if (result.error) failPeople(result);
+  const data = (result.data ?? {}) as Record<string, unknown>;
+  return { brandId, scope: data.scope ?? null, total: data.total ?? null, companies: data.organizations ?? [] };
+}
+
+/** The tool's words for a change, and the API's kind for it. */
+const CHANGE_KIND: Record<string, string> = {
+  add_tag: "tag_add",
+  remove_tag: "tag_remove",
+  add_company: "organization_add",
+  remove_company: "organization_remove",
+  domain_is: "domain_kind",
+};
+const KIND_CHANGE = Object.fromEntries(Object.entries(CHANGE_KIND).map(([c, k]) => [k, c]));
+
+/** A stated fix as the agent reads it: the change in the tool's words. */
+function correctionForAssistant(c: Record<string, unknown>) {
+  const { kind, statedByUserId, undoneByUserId, ...rest } = c;
+  void statedByUserId;
+  void undoneByUserId;
+  return { change: KIND_CHANGE[String(kind)] ?? kind, ...rest };
+}
+
+async function handleCorrectPerson(args: Record<string, unknown>) {
+  const brandId = idArg(args, "brandId", "brand_id");
+  const change = String(args.change ?? "");
+  const kind = CHANGE_KIND[change];
+  if (!kind) throw new Error(`Unknown change \`${change}\`: one of ${Object.keys(CHANGE_KIND).join(", ")}.`);
+  const body: Record<string, unknown> = { brandId, kind };
+  for (const k of ["personId", "tag", "domain", "companyId", "tags", "domainKind", "reason"]) {
+    if (args[k] !== undefined && args[k] !== null && args[k] !== "") body[k] = args[k];
+  }
+  const data = await postPeople("/v1/orgs/people/corrections", body, { brandId, orgId: args.orgId });
+  const correction = correctionForAssistant((data.correction ?? {}) as Record<string, unknown>);
+  return {
+    correction,
+    duplicate: data.duplicate ?? false,
+    next: data.duplicate
+      ? "This fix was already stated: nothing changed."
+      : "Recorded. It shows on the person within about a minute (distribute_find_people). To take it back: distribute_undo_people_correction with this correctionId.",
+  };
+}
+
+async function handleListPeopleCorrections(args: Record<string, unknown>) {
+  const brandId = idArg(args, "brandId", "brand_id");
+  const target = { brandId, orgId: args.orgId };
+  const [corrections, merges] = await Promise.all([
+    callApi<Record<string, unknown>>(withTarget("/v1/orgs/people/corrections", target)),
+    callApi<Record<string, unknown>>(withTarget("/v1/orgs/people/merges", target)),
+  ]);
+  if (corrections.error) failPeople(corrections);
+  if (merges.error) failPeople(merges);
+  const list = ((corrections.data as Record<string, unknown>)?.corrections ?? []) as Record<string, unknown>[];
+  return {
+    brandId,
+    corrections: list.map(correctionForAssistant),
+    merges: (merges.data as Record<string, unknown>)?.merges ?? [],
+  };
+}
+
+async function handleUndoPeopleCorrection(args: Record<string, unknown>) {
+  const brandId = idArg(args, "brandId", "brand_id");
+  const correctionId = idArg(args, "correctionId", "correction_id");
+  const data = await postPeople(`/v1/orgs/people/corrections/${encodeURIComponent(correctionId)}/undo`, { brandId }, { brandId, orgId: args.orgId });
+  return {
+    correction: correctionForAssistant((data.correction ?? {}) as Record<string, unknown>),
+    duplicate: data.duplicate ?? false,
+    next: data.duplicate ? "This fix was already undone: nothing changed." : "Undone. Our automatic reading applies again within about a minute.",
+  };
+}
+
+async function handleMergePeople(args: Record<string, unknown>) {
+  const brandId = idArg(args, "brandId", "brand_id");
+  const personIds = args.personIds;
+  if (!Array.isArray(personIds) || personIds.length !== 2) throw new Error("Pass `personIds`: the two people's personId, from distribute_find_people.");
+  const body: Record<string, unknown> = { brandId, personIds };
+  if (typeof args.reason === "string" && args.reason.trim()) body.reason = args.reason.trim();
+  const data = await postPeople("/v1/orgs/people/merges", body, { brandId, orgId: args.orgId });
+  return {
+    ...data,
+    next: data.duplicate
+      ? "These two were already stated as one: nothing changed."
+      : "Recorded. They show as one person within about a minute. To take it back: distribute_undo_people_merge with this mergeId.",
+  };
+}
+
+async function handleUndoPeopleMerge(args: Record<string, unknown>) {
+  const brandId = idArg(args, "brandId", "brand_id");
+  const mergeId = idArg(args, "mergeId", "merge_id");
+  const data = await postPeople(`/v1/orgs/people/merges/${encodeURIComponent(mergeId)}/undo`, { brandId }, { brandId, orgId: args.orgId });
+  return {
+    ...data,
+    next: data.duplicate ? "This merge was already undone: nothing changed." : "Undone. Each gets back their own person within about a minute.",
+  };
 }
 
 // ── The whole API, by intent ─────────────────────────────────────────────────
