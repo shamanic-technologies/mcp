@@ -51,7 +51,7 @@ Call `distribute_status` first — it confirms the key reached the gateway, list
 
 ## Tools
 
-There are **19 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
+There are **26 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
 
 **Same scope as the API.** Whatever your key can do on `https://api.distribute.you/v1/*`, it can do from here, and nothing more: the API decides on every call what the key may read or write, and this server never widens or narrows it. Our own internals (prompt text, models, token counts, generation costs, the internal service registry) never come back through it.
 
@@ -78,6 +78,18 @@ Curated tools, for the frequent jobs:
 | `distribute_list_emails` | The emails we wrote for a brand: for each prospect, the first email and every follow-up, subject and body |
 | `distribute_get_lead` | One lead in one call: who they are, where they stand, the emails written for them, and the whole conversation. Takes a lead's `id` or the person's `leadId` (with `campaignId`) |
 | `distribute_list_triggers` | The entry doors a reactive campaign starts on, each with its `type` (`outcome` or `condition`), whether it is `callable`, and how to fire a callable one for a person (`distribute_call_api POST /v1/trigger-events`) |
+
+How we see a brand's people, and the user's fixes (each one only when the user asks, each one undoable):
+
+| Tool | What it does |
+|---|---|
+| `distribute_find_people` | Find a person of the brand by name, email, phone, company or words they wrote, with their `tags` (personal: family or friend of the user, or not; work: about this brand, or about something else) and the `companies` they speak for. Each carries the `personId` the fixes take |
+| `distribute_list_people_companies` | The companies the brand's people speak for, most people first, with their domains and tags |
+| `distribute_correct_person` | Fix a person or a domain: `add_tag` / `remove_tag` ("Mom is a client of mine, not family"), `add_company` ("she works at Acme"), `remove_company` ("she left Acme"), `domain_is` ("mybiz.co is a company, not a public mailbox"). Refusals come back with their `reason` and what to do next |
+| `distribute_list_people_corrections` | Every fix stated on the brand's people, and every merge, undone ones included |
+| `distribute_undo_people_correction` | Take a fix back ("undo that"): our automatic reading applies again |
+| `distribute_merge_people` | State two people are the same human ("these two are the same person") |
+| `distribute_undo_people_merge` | Split them back ("they are not the same person") |
 
 The method, before acting on a client's ask:
 

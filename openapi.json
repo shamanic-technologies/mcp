@@ -478,6 +478,297 @@
           "$schema": "http://json-schema.org/draft-07/schema#"
         }
       },
+      "distribute_find_people": {
+        "description": "Find the people a brand deals with (from Gmail, WhatsApp and other chats, the CRM, Stripe, signups...), one entry per real person, and read how we see each one: `tags` (who they are to the user and to the brand: `personal_to_user` (personal: family or a friend of the user who connected the account), `personal_not_to_user` (personal, but not about that user (someone else's private life)), `professional_to_brand` (work, about this brand: a prospect, client, user or partner), `professional_not_to_brand` (work, about something else: a supplier, the user's other activities, a bank...)) and `companies` (the companies they speak for at work, each with its `companyId` and `domain`). Use it to find the person the user talks about (\"Mom\", \"Jane from Acme\", \"jane@acme.com\", \"+33612345678\") before correcting anything: `q` matches a name, an email, a phone, a company or words from their messages. Each entry carries the `personId` the correction tools take. A tag or company the user stated themselves says `statedByUser: true`. `scope.status` `building` means the brand's people are still being gathered: ask again in a minute. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_find_people",
+          "definitions": {
+            "distribute_find_people": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand whose people to search (from distribute_status)."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                },
+                "q": {
+                  "type": "string",
+                  "description": "Who to find: a name, an email, a phone (4+ digits), a company or words they wrote. Omit for the most recent people."
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 100,
+                  "description": "People per page (default 20, max 100)."
+                },
+                "offset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "How many to skip (pagination)."
+                }
+              },
+              "required": [
+                "brandId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_list_people_companies": {
+        "description": "List the companies a brand's people speak for at work, most people first: each with its `companyId`, its `domains`, how many of the brand's people speak for it (`people`) and in what capacity (`tags`: about this brand, or about something else, with how many carry each). Use it for \"which companies do my contacts work for?\" or to find a company's id before removing it from a person. To see WHO works there, search the people with distribute_find_people (q = the company's domain). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_list_people_companies",
+          "definitions": {
+            "distribute_list_people_companies": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand whose people's companies to list (from distribute_status)."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                },
+                "limit": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1000,
+                  "description": "Companies per page (default 100)."
+                },
+                "offset": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "How many to skip (pagination)."
+                }
+              },
+              "required": [
+                "brandId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_correct_person": {
+        "description": "Fix how we see a person, or an email domain, when the user says we got it wrong. Only call it when the user asks for the change; say what you are about to change first. One fix per call (`change`): `add_tag` / `remove_tag` with `personId` and `tag` (\"Mom is a client of mine, not family\" = remove_tag personal_to_user, then add_tag professional_to_brand: two calls); `add_company` with `personId` and the company's `domain` or website (\"she works at Acme\": acme.com), optionally `tags` for how they speak for it; `remove_company` with `personId` and `companyId` (\"she left Acme\": the id from the person's `companies`); `domain_is` with `domain` and `domainKind`: `mailbox_provider` (a public mailbox like gmail.com, its users are not one company) or `organization` (\"mybiz.co is a company, not a public mailbox\"). Tags: `personal_to_user` (personal: family or a friend of the user who connected the account), `personal_not_to_user` (personal, but not about that user (someone else's private life)), `professional_to_brand` (work, about this brand: a prospect, client, user or partner), `professional_not_to_brand` (work, about something else: a supplier, the user's other activities, a bank...). The user's word wins over our automatic reading until undone; a newer fix on the same thing takes back the older one (an add takes back an earlier remove of that tag or company, and the reverse): read distribute_list_people_corrections first to see what the user already stated, removals included (distribute_find_people shows only what a person carries now). It shows on the people within about a minute (re-read with distribute_find_people). The same fix twice answers `duplicate: true`. Keep the returned `correctionId`: \"undo that\" = distribute_undo_people_correction with it. Refusals come back with their `reason`: `person_not_found` (search again with distribute_find_people), `company_unresolved` (no company is known for that domain: check the spelling or use the website), `tags_required` (say how the person speaks for that company: professional_to_brand and/or professional_not_to_brand), `invalid_correction` (a field is missing for that change). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_correct_person",
+          "definitions": {
+            "distribute_correct_person": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand the person belongs to (from distribute_status)."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                },
+                "change": {
+                  "type": "string",
+                  "enum": [
+                    "add_tag",
+                    "remove_tag",
+                    "add_company",
+                    "remove_company",
+                    "domain_is"
+                  ],
+                  "description": "What to fix (see the description)."
+                },
+                "personId": {
+                  "type": "string",
+                  "description": "The person, from distribute_find_people. Every change but `domain_is`."
+                },
+                "tag": {
+                  "type": "string",
+                  "enum": [
+                    "personal_to_user",
+                    "personal_not_to_user",
+                    "professional_to_brand",
+                    "professional_not_to_brand"
+                  ],
+                  "description": "add_tag / remove_tag: the tag to add or remove."
+                },
+                "domain": {
+                  "type": "string",
+                  "description": "add_company: the company's domain or website. domain_is: the email domain (e.g. mybiz.co)."
+                },
+                "companyId": {
+                  "type": "string",
+                  "description": "remove_company: the company's `companyId` from the person's `companies`."
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "enum": [
+                      "personal_to_user",
+                      "personal_not_to_user",
+                      "professional_to_brand",
+                      "professional_not_to_brand"
+                    ]
+                  },
+                  "description": "add_company: how the person speaks for it (professional_to_brand and/or professional_not_to_brand). Default: their own work tags."
+                },
+                "domainKind": {
+                  "type": "string",
+                  "enum": [
+                    "mailbox_provider",
+                    "organization"
+                  ],
+                  "description": "domain_is: `mailbox_provider` (a public mailbox) or `organization` (a company)."
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Why, in the user's words (kept with the fix)."
+                }
+              },
+              "required": [
+                "brandId",
+                "change"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_list_people_corrections": {
+        "description": "List every fix stated on a brand's people, newest first, undone ones included: `corrections` (tags, companies, domain verdicts; each with its `correctionId`, `change`, the person, `reason`, when, and `undoneAt` once taken back) and `merges` (two people stated as one, each with its `mergeId`). Use it for \"what did I change?\" or to find the fix to take back when the user says \"undo that\" about an earlier one. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_list_people_corrections",
+          "definitions": {
+            "distribute_list_people_corrections": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand whose fixes to list (from distribute_status)."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                }
+              },
+              "required": [
+                "brandId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_undo_people_correction": {
+        "description": "Take back a fix made with distribute_correct_person, when the user says \"undo that\" or \"put it back\": our automatic reading applies again within about a minute. Pass its `correctionId` (from the fix's answer, or distribute_list_people_corrections). A fix made of two calls (remove a tag, add another) is undone with two calls, in any order. Undo goes back to our AUTOMATIC reading, not to an earlier fix this one took back: if the user had stated something before (listed as undone at the moment this fix was made), say so and, when the user wants that back, state it again with distribute_correct_person. The fix stays listed as undone. Undoing twice answers `duplicate: true`; an unknown id is refused `correction_not_found`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_undo_people_correction",
+          "definitions": {
+            "distribute_undo_people_correction": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand the fix was made on (from distribute_status)."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                },
+                "correctionId": {
+                  "type": "string",
+                  "description": "The fix to take back."
+                }
+              },
+              "required": [
+                "brandId",
+                "correctionId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_merge_people": {
+        "description": "State that two people of a brand are the same human (\"these two are the same person\": a WhatsApp chat with a number never saved and the same person on Gmail). Only call it when the user says so. Pass both `personIds` from distribute_find_people. They show as one person within about a minute. Keep the returned `mergeId`: \"undo that\" = distribute_undo_people_merge. Refusals come back with their `reason`: `person_not_found`, `same_person` (both ids are already the same person), `already_one_person`, `different_brand`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_merge_people",
+          "definitions": {
+            "distribute_merge_people": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand both people belong to (from distribute_status)."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                },
+                "personIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "description": "The two people's `personId`, from distribute_find_people."
+                },
+                "reason": {
+                  "type": "string",
+                  "description": "Why, in the user's words."
+                }
+              },
+              "required": [
+                "brandId",
+                "personIds"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_undo_people_merge": {
+        "description": "Split back two people stated as one with distribute_merge_people (\"they are not the same person\", \"undo that\"). Each gets back their own person within about a minute. Pass its `mergeId` (from the merge's answer, or distribute_list_people_corrections). Undoing twice answers `duplicate: true`; an unknown id is refused `merge_not_found`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_undo_people_merge",
+          "definitions": {
+            "distribute_undo_people_merge": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand the merge was made on (from distribute_status)."
+                },
+                "orgId": {
+                  "type": "string",
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                },
+                "mergeId": {
+                  "type": "string",
+                  "description": "The merge to take back."
+                }
+              },
+              "required": [
+                "brandId",
+                "mergeId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
       "distribute_find_api": {
         "description": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has. To list the triggers (and which ones a call may fire), use distribute_list_triggers.",
         "inputSchema": {
@@ -1702,6 +1993,542 @@
               "schema": {
                 "type": "object",
                 "properties": {},
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_find_people": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Find the people a brand deals with (from Gmail, WhatsApp and other chats, the CRM, Stripe, signups...), one entry per real person, and read how we see each one: `tags` (who they are to the user and to the brand: `personal_to_user` (personal: family or a friend of the user who connected the account), `personal_not_to_user` (personal, but not about that user (someone else's private life)), `professional_to_brand` (work, about this brand: a prospect, client, user or partner), `professional_not_to_brand` (work, about something else: a supplier, the user's other activities, a bank...)) and `companies` (the companies they speak for at work, each with its `companyId` and `domain`). Use it to find the person the user talks about (\"Mom\", \"Jane from Acme\", \"jane@acme.com\", \"+33612345678\") before correcting anything: `q` matches a name, an email, a phone, a company or words from their messages. Each entry carries the `personId` the correction tools take. A tag or company the user stated themselves says `statedByUser: true`. `scope.status` `building` means the brand's people are still being gathered: ask again in a minute. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_find_people. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_find_people\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand whose people to search (from distribute_status)."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  },
+                  "q": {
+                    "type": "string",
+                    "description": "Who to find: a name, an email, a phone (4+ digits), a company or words they wrote. Omit for the most recent people."
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 100,
+                    "description": "People per page (default 20, max 100)."
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "How many to skip (pagination)."
+                  }
+                },
+                "required": [
+                  "brandId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_list_people_companies": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "List the companies a brand's people speak for at work, most people first: each with its `companyId`, its `domains`, how many of the brand's people speak for it (`people`) and in what capacity (`tags`: about this brand, or about something else, with how many carry each). Use it for \"which companies do my contacts work for?\" or to find a company's id before removing it from a person. To see WHO works there, search the people with distribute_find_people (q = the company's domain). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_list_people_companies. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_people_companies\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand whose people's companies to list (from distribute_status)."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  },
+                  "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "description": "Companies per page (default 100)."
+                  },
+                  "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "How many to skip (pagination)."
+                  }
+                },
+                "required": [
+                  "brandId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_correct_person": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Fix how we see a person, or an email domain, when the user says we got it wrong. Only call it when the user asks for the change; say what you are about to change first. One fix per call (`change`): `add_tag` / `remove_tag` with `personId` and `tag` (\"Mom is a client of mine, not family\" = remove_tag personal_to_user, then add_tag professional_to_brand: two calls); `add_company` with `personId` and the company's `domain` or website (\"she works at Acme\": acme.com), optionally `tags` for how they speak for it; `remove_company` with `personId` and `companyId` (\"she left Acme\": the id from the person's `companies`); `domain_is` with `domain` and `domainKind`: `mailbox_provider` (a public mailbox like gmail.com, its users are not one company) or `organization` (\"mybiz.co is a company, not a public mailbox\"). Tags: `personal_to_user` (personal: family or a friend of the user who connected the account), `personal_not_to_user` (personal, but not about that user (someone else's private life)), `professional_to_brand` (work, about this brand: a prospect, client, user or partner), `professional_not_to_brand` (work, about something else: a supplier, the user's other activities, a bank...). The user's word wins over our automatic reading until undone; a newer fix on the same thing takes back the older one (an add takes back an earlier remove of that tag or company, and the reverse): read distribute_list_people_corrections first to see what the user already stated, removals included (distribute_find_people shows only what a person carries now). It shows on the people within about a minute (re-read with distribute_find_people). The same fix twice answers `duplicate: true`. Keep the returned `correctionId`: \"undo that\" = distribute_undo_people_correction with it. Refusals come back with their `reason`: `person_not_found` (search again with distribute_find_people), `company_unresolved` (no company is known for that domain: check the spelling or use the website), `tags_required` (say how the person speaks for that company: professional_to_brand and/or professional_not_to_brand), `invalid_correction` (a field is missing for that change). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_correct_person. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_correct_person\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand the person belongs to (from distribute_status)."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  },
+                  "change": {
+                    "type": "string",
+                    "enum": [
+                      "add_tag",
+                      "remove_tag",
+                      "add_company",
+                      "remove_company",
+                      "domain_is"
+                    ],
+                    "description": "What to fix (see the description)."
+                  },
+                  "personId": {
+                    "type": "string",
+                    "description": "The person, from distribute_find_people. Every change but `domain_is`."
+                  },
+                  "tag": {
+                    "type": "string",
+                    "enum": [
+                      "personal_to_user",
+                      "personal_not_to_user",
+                      "professional_to_brand",
+                      "professional_not_to_brand"
+                    ],
+                    "description": "add_tag / remove_tag: the tag to add or remove."
+                  },
+                  "domain": {
+                    "type": "string",
+                    "description": "add_company: the company's domain or website. domain_is: the email domain (e.g. mybiz.co)."
+                  },
+                  "companyId": {
+                    "type": "string",
+                    "description": "remove_company: the company's `companyId` from the person's `companies`."
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "personal_to_user",
+                        "personal_not_to_user",
+                        "professional_to_brand",
+                        "professional_not_to_brand"
+                      ]
+                    },
+                    "description": "add_company: how the person speaks for it (professional_to_brand and/or professional_not_to_brand). Default: their own work tags."
+                  },
+                  "domainKind": {
+                    "type": "string",
+                    "enum": [
+                      "mailbox_provider",
+                      "organization"
+                    ],
+                    "description": "domain_is: `mailbox_provider` (a public mailbox) or `organization` (a company)."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why, in the user's words (kept with the fix)."
+                  }
+                },
+                "required": [
+                  "brandId",
+                  "change"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_list_people_corrections": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "List every fix stated on a brand's people, newest first, undone ones included: `corrections` (tags, companies, domain verdicts; each with its `correctionId`, `change`, the person, `reason`, when, and `undoneAt` once taken back) and `merges` (two people stated as one, each with its `mergeId`). Use it for \"what did I change?\" or to find the fix to take back when the user says \"undo that\" about an earlier one. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_list_people_corrections. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_people_corrections\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand whose fixes to list (from distribute_status)."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  }
+                },
+                "required": [
+                  "brandId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_undo_people_correction": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Take back a fix made with distribute_correct_person, when the user says \"undo that\" or \"put it back\": our automatic reading applies again within about a minute. Pass its `correctionId` (from the fix's answer, or distribute_list_people_corrections). A fix made of two calls (remove a tag, add another) is undone with two calls, in any order. Undo goes back to our AUTOMATIC reading, not to an earlier fix this one took back: if the user had stated something before (listed as undone at the moment this fix was made), say so and, when the user wants that back, state it again with distribute_correct_person. The fix stays listed as undone. Undoing twice answers `duplicate: true`; an unknown id is refused `correction_not_found`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_undo_people_correction. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_undo_people_correction\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand the fix was made on (from distribute_status)."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  },
+                  "correctionId": {
+                    "type": "string",
+                    "description": "The fix to take back."
+                  }
+                },
+                "required": [
+                  "brandId",
+                  "correctionId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_merge_people": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "State that two people of a brand are the same human (\"these two are the same person\": a WhatsApp chat with a number never saved and the same person on Gmail). Only call it when the user says so. Pass both `personIds` from distribute_find_people. They show as one person within about a minute. Keep the returned `mergeId`: \"undo that\" = distribute_undo_people_merge. Refusals come back with their `reason`: `person_not_found`, `same_person` (both ids are already the same person), `already_one_person`, `different_brand`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_merge_people. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_merge_people\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand both people belong to (from distribute_status)."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  },
+                  "personIds": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 2,
+                    "maxItems": 2,
+                    "description": "The two people's `personId`, from distribute_find_people."
+                  },
+                  "reason": {
+                    "type": "string",
+                    "description": "Why, in the user's words."
+                  }
+                },
+                "required": [
+                  "brandId",
+                  "personIds"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_undo_people_merge": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Split back two people stated as one with distribute_merge_people (\"they are not the same person\", \"undo that\"). Each gets back their own person within about a minute. Pass its `mergeId` (from the merge's answer, or distribute_list_people_corrections). Undoing twice answers `duplicate: true`; an unknown id is refused `merge_not_found`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_undo_people_merge. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_undo_people_merge\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand the merge was made on (from distribute_status)."
+                  },
+                  "orgId": {
+                    "type": "string",
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  },
+                  "mergeId": {
+                    "type": "string",
+                    "description": "The merge to take back."
+                  }
+                },
+                "required": [
+                  "brandId",
+                  "mergeId"
+                ],
                 "additionalProperties": false
               }
             }

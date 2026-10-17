@@ -84,10 +84,14 @@ describe("the curated tools are read-only", () => {
   it("calls the gateway with no mutating verb", () => {
     const src = read("src/tools/index.ts");
     // The POSTs left: an ICP suggestion (computes an answer, stores nothing),
-    // and the agent's own onboarding (owner 2026-10-12): signup start/complete
-    // and the prepaid checkout, which returns a payment page and moves no money.
+    // the agent's own onboarding (owner 2026-10-12): signup start/complete
+    // and the prepaid checkout, which returns a payment page and moves no money,
+    // and ONE helper for the user's own fixes on how their people were matched
+    // (owner 2026-10-17, PEOPLE-CORRECTIONS-1017): a tag, a company, a domain
+    // verdict, two people as one, each undoable. None touches a campaign or money.
     const posts = src.match(/method: "(POST|PUT|PATCH|DELETE)"/g) ?? [];
-    expect(posts).toEqual(['method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"']);
+    expect(posts).toEqual(['method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"']);
+    for (const path of ["/v1/orgs/people/corrections", "/v1/orgs/people/merges"]) expect(src).toContain(path);
     expect(src).toContain("/icp/suggest");
     expect(src).toContain('"/v1/agent-signups/start"');
     expect(src).toContain('"/v1/agent-signups/complete"');

@@ -41,6 +41,15 @@ describe("a route whose service did not answer", () => {
     expect(res.errorBody?.fix).toMatch(/30 seconds/);
   });
 
+  it("names the edge's HTML 502 page instead of handing back 3 KB of HTML", async () => {
+    const html = "<!DOCTYPE html>\n<html><head><title>distribute.you | 502: Bad gateway</title></head><body>cf</body></html>";
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(html, { status: 502 }));
+    const res = await runWithApiKey("k", () => callApi(PATH));
+    expect(res.error).toBe(UNREACHABLE_CODE);
+    expect(res.errorBody).toMatchObject({ code: UNREACHABLE_CODE, cause: "HTTP 502 edge error page: distribute.you | 502: Bad gateway" });
+    expect(JSON.stringify(res.errorBody)).not.toContain("<html");
+  });
+
   it("leaves a service's own 500 words alone", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ error: "Offer has no stated value" }), { status: 500 }));
     const res = await runWithApiKey("k", () => callApi(PATH));
