@@ -848,6 +848,7 @@ describe("the method skills", () => {
       { slug: "offers", parentSlug: "index", title: "Offers", description: "Offers and documents" },
     ]);
     expect(out.next).toContain("index");
+    expect(out.next).toContain("client-comms");
     expect(JSON.stringify(out)).not.toContain("kevin@");
   });
 
