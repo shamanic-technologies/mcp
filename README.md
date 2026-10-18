@@ -96,7 +96,7 @@ The method, before acting on a client's ask:
 | Tool | What it does |
 |---|---|
 | `distribute_list_skills` | The method skills our Copilot follows (offers and their documents, the catalogue, sales funnels, campaigns and their caps, triggers, billing, plays), each with when to read it |
-| `distribute_read_skill` | One skill in full: the steps and the API operations to call, in order. Start with `index` |
+| `distribute_read_skill` | One skill in full: the steps and the API operations to call, in order. Start with `index`; read `client-comms` before writing anything a person will read |
 
 The whole API, by intent:
 

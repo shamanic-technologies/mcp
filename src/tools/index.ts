@@ -172,9 +172,10 @@ export const toolDefinitions = {
       "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. " +
       "A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. " +
       "Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. " +
-      "Then, before acting on what the client asks (set something up, change how a campaign behaves, launch, attach files, caps...), " +
+      "Then, before acting on or answering what the client asks (a question about results, set something up, change how a campaign behaves, launch, attach files, caps...), " +
       "read the method: distribute_list_skills, then distribute_read_skill on `index` and on every skill whose description matches the ask. " +
       "They are the steps our own Copilot follows; an API route alone rarely is the whole setup. " +
+      "Before writing anything a person will read (a reply to the client, an email, a message, a file), read `client-comms`: how we speak to clients and prospects. " +
       "A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` " +
       "with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. " +
       "Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
@@ -190,17 +191,19 @@ export const toolDefinitions = {
       "List the method skills: how to organize a client's request on distribute.you (offers and their documents, the catalogue, sales funnels, " +
       "campaigns and their caps, triggers, billing, workflows and plays...), the same skills our own Copilot follows. Each skill has a `slug`, a `title`, " +
       "and a `description` saying when to read it; `parentSlug` places it in the tree (root: `index`). " +
-      "Read this BEFORE acting on a client ask, then read `index` and every matching skill with distribute_read_skill. " +
+      "A skill described as \"Always loaded\" is loaded for our own Copilot only: you read it yourself. " +
+      "Read this BEFORE acting on a client ask, then read `index` and every matching skill with distribute_read_skill, " +
+      "and `client-comms` before writing anything a person will read. " +
       "Free, read-only, the same for every client: names no brand or organization.",
     schema: z.object({}),
   },
   distribute_read_skill: {
     description:
       "Read one method skill in full (markdown `content`): the steps, the API operations to call in order and the traps. " +
-      "Start with `index`, then the skills distribute_list_skills shows matching the client's ask. Follow them; " +
+      "Start with `index`, then the skills distribute_list_skills shows matching the client's ask; read `client-comms` before writing anything a person will read. Follow them; " +
       "run the operations they name with distribute_call_api (distribute_describe_api for their parameters). Free, read-only.",
     schema: z.object({
-      slug: z.string().describe("Skill slug from distribute_list_skills, e.g. `index`, `offers`, `campaigns`."),
+      slug: z.string().describe("Skill slug from distribute_list_skills, e.g. `index`, `client-comms`, `offers`, `campaigns`."),
     }),
   },
   distribute_signup_start: {
@@ -711,7 +714,7 @@ async function handleListSkills() {
   if (result.error) failWith(result);
   const skills = (result.data as { skills: SkillSummary[] }).skills;
   return {
-    next: "Read `index` with distribute_read_skill, then every skill whose description matches the client's ask, before acting.",
+    next: "Read `index` with distribute_read_skill, then every skill whose description matches the client's ask, before acting; read `client-comms` before writing anything a person will read.",
     skills: skills.map((s) => ({ slug: s.slug, parentSlug: s.parentSlug, title: s.title, description: s.description })),
   };
 }
