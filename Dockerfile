@@ -1,5 +1,5 @@
 # Stage 1: Builder
-FROM node:20-slim AS builder
+FROM node:22.23.4-slim AS builder
 
 WORKDIR /app
 
@@ -44,7 +44,7 @@ RUN pnpm deploy --filter @distribute.you/mcp-service --prod /prod \
 RUN cp -r /app/dist /prod/dist
 
 # Stage 2: Production
-FROM node:20-slim
+FROM node:22.23.4-slim
 
 WORKDIR /app
 
