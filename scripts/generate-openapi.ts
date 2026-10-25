@@ -1,6 +1,6 @@
 import { toolDefinitions } from "../src/tools/index.js";
 import { writeFileSync } from "fs";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { z } from "zod";
 
 // Generate OpenAPI spec from MCP tool definitions
 // Since mcp-service uses MCP protocol (not REST), we document the tools as virtual endpoints
@@ -98,7 +98,19 @@ const paths: Record<string, unknown> = {
 const toolSchemas: Record<string, unknown> = {};
 
 for (const [name, def] of Object.entries(toolDefinitions)) {
-  const jsonSchema = zodToJsonSchema(def.schema, name);
+  // zod 4 converts natively. Kept in the draft-07 `{ $ref, definitions }` wrapper the old
+  // zod-to-json-schema emitted, so the served openapi.json keeps its shape.
+  // zod 4 also writes the safe-integer bounds of `.int()` and `propertyNames: string` on records:
+  // both implied, dropped so the published contract stays byte-identical.
+  const { $schema, ...toolSchema } = z.toJSONSchema(def.schema, {
+    target: "draft-7",
+    override: ({ jsonSchema: js }) => {
+      if (js.maximum === Number.MAX_SAFE_INTEGER) delete js.maximum;
+      if (js.minimum === Number.MIN_SAFE_INTEGER) delete js.minimum;
+      if (js.type === "object" && (js.propertyNames as { type?: string } | undefined)?.type === "string") delete js.propertyNames;
+    },
+  });
+  const jsonSchema = { $ref: `#/definitions/${name}`, definitions: { [name]: toolSchema }, $schema };
 
   toolSchemas[name] = {
     description: def.description,

@@ -10,9 +10,9 @@ vi.mock("../src/lib/api-client.js", () => ({
   isConfigured: vi.fn(() => true),
 }));
 
+import { z } from "zod";
 import { handleToolCall, toolDefinitions, TRIGGER_RULE } from "../src/tools/index.js";
 import { callApi } from "../src/lib/api-client.js";
-import { zodToJsonSchema } from "zod-to-json-schema";
 
 const mockCallApi = vi.mocked(callApi);
 
@@ -882,7 +882,7 @@ describe("tool text speaks the current model", () => {
 
   it("no tool description, parameter description or example names a retired concept", () => {
     const text = JSON.stringify(
-      Object.entries(toolDefinitions).map(([name, t]) => ({ name, description: t.description, schema: zodToJsonSchema(t.schema) })),
+      Object.entries(toolDefinitions).map(([name, t]) => ({ name, description: t.description, schema: z.toJSONSchema(t.schema) })),
     );
     for (const word of RETIRED) expect(text, String(word)).not.toMatch(word);
   });
