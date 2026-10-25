@@ -33,8 +33,8 @@
               "type": "object",
               "properties": {
                 "search": {
-                  "type": "string",
-                  "description": "Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive)."
+                  "description": "Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive).",
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -123,8 +123,8 @@
                   "description": "The 6-digit code emailed to it."
                 },
                 "keyName": {
-                  "type": "string",
-                  "description": "A name for the key, to recognize it later (e.g. the agent's name)."
+                  "description": "A name for the key, to recognize it later (e.g. the agent's name).",
+                  "type": "string"
                 }
               },
               "required": [
@@ -158,20 +158,20 @@
                   "description": "Balance under which the card reloads, in cents. At least 500 ($5)."
                 },
                 "success_url": {
-                  "type": "string",
-                  "description": "Page shown after paying (default https://distribute.you/?prepaid=paid)."
+                  "description": "Page shown after paying (default https://distribute.you/?prepaid=paid).",
+                  "type": "string"
                 },
                 "cancel_url": {
-                  "type": "string",
-                  "description": "Page shown if payment is cancelled (default https://distribute.you/?prepaid=cancelled)."
+                  "description": "Page shown if payment is cancelled (default https://distribute.you/?prepaid=cancelled).",
+                  "type": "string"
                 },
                 "brandId": {
-                  "type": "string",
-                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 }
               },
               "required": [
@@ -194,12 +194,12 @@
               "type": "object",
               "properties": {
                 "brandId": {
-                  "type": "string",
-                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -217,16 +217,16 @@
               "type": "object",
               "properties": {
                 "human_id": {
-                  "type": "string",
-                  "description": "Filter by human expert ID (for styled workflows)"
+                  "description": "Filter by human expert ID (for styled workflows)",
+                  "type": "string"
                 },
                 "brandId": {
-                  "type": "string",
-                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -244,21 +244,21 @@
               "type": "object",
               "properties": {
                 "brandId": {
-                  "type": "string",
-                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 },
                 "status": {
+                  "description": "Filter by campaign status: `ongoing` (running) or `stopped`. `all`, or no status, returns every campaign. Any other value is refused.",
                   "type": "string",
                   "enum": [
                     "ongoing",
                     "stopped",
                     "all"
-                  ],
-                  "description": "Filter by campaign status: `ongoing` (running) or `stopped`. `all`, or no status, returns every campaign. Any other value is refused."
+                  ]
                 }
               },
               "additionalProperties": false
@@ -276,20 +276,20 @@
               "type": "object",
               "properties": {
                 "campaignId": {
-                  "type": "string",
-                  "description": "Campaign id, from distribute_list_campaigns. Required (or `campaign_id`)."
+                  "description": "Campaign id, from distribute_list_campaigns. Required (or `campaign_id`).",
+                  "type": "string"
                 },
                 "campaign_id": {
-                  "type": "string",
-                  "description": "Older name of `campaignId`, still accepted. Prefer `campaignId`."
+                  "description": "Older name of `campaignId`, still accepted. Prefer `campaignId`.",
+                  "type": "string"
                 },
                 "brandId": {
-                  "type": "string",
-                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -307,12 +307,12 @@
               "type": "object",
               "properties": {
                 "brandId": {
-                  "type": "string",
-                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -330,16 +330,16 @@
               "type": "object",
               "properties": {
                 "brand_url": {
-                  "type": "string",
-                  "description": "The brand/company URL to analyze for ICP extraction. Optional when brandId is given."
+                  "description": "The brand/company URL to analyze for ICP extraction. Optional when brandId is given.",
+                  "type": "string"
                 },
                 "brandId": {
-                  "type": "string",
-                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -361,22 +361,22 @@
                   "description": "Brand whose leads to list (from distribute_status)."
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 },
                 "campaignId": {
-                  "type": "string",
-                  "description": "Only leads of this campaign part (a lead's `campaignId`)."
+                  "description": "Only leads of this campaign part (a lead's `campaignId`).",
+                  "type": "string"
                 },
                 "limit": {
+                  "description": "Leads per page (default 50, max 200).",
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 200,
-                  "description": "Leads per page (default 50, max 200)."
+                  "maximum": 200
                 },
                 "cursor": {
-                  "type": "string",
-                  "description": "The `nextCursor` of the previous page."
+                  "description": "The `nextCursor` of the previous page.",
+                  "type": "string"
                 }
               },
               "required": [
@@ -401,23 +401,23 @@
                   "description": "Brand whose emails to list (from distribute_status)."
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 },
                 "campaignId": {
-                  "type": "string",
-                  "description": "Only the emails of this campaign part."
+                  "description": "Only the emails of this campaign part.",
+                  "type": "string"
                 },
                 "limit": {
+                  "description": "Emails per page (default 20, max 200).",
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 200,
-                  "description": "Emails per page (default 20, max 200)."
+                  "maximum": 200
                 },
                 "offset": {
+                  "description": "How many to skip (pagination).",
                   "type": "integer",
-                  "minimum": 0,
-                  "description": "How many to skip (pagination)."
+                  "minimum": 0
                 }
               },
               "required": [
@@ -438,24 +438,24 @@
               "type": "object",
               "properties": {
                 "leadId": {
-                  "type": "string",
-                  "description": "A lead's `id` from distribute_list_leads, or the person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`). Required (or `lead_id`)."
+                  "description": "A lead's `id` from distribute_list_leads, or the person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`). Required (or `lead_id`).",
+                  "type": "string"
                 },
                 "lead_id": {
-                  "type": "string",
-                  "description": "Older name of `leadId`, still accepted. Prefer `leadId`."
+                  "description": "Older name of `leadId`, still accepted. Prefer `leadId`.",
+                  "type": "string"
                 },
                 "campaignId": {
-                  "type": "string",
-                  "description": "With a person's id: the campaign step they are on (`ranLeads[].campaignId` of the trigger event, or a lead's `campaignId`)."
+                  "description": "With a person's id: the campaign step they are on (`ranLeads[].campaignId` of the trigger event, or a lead's `campaignId`).",
+                  "type": "string"
                 },
                 "brandId": {
-                  "type": "string",
-                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -491,23 +491,23 @@
                   "description": "Brand whose people to search (from distribute_status)."
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 },
                 "q": {
-                  "type": "string",
-                  "description": "Who to find: a name, an email, a phone (4+ digits), a company or words they wrote. Omit for the most recent people."
+                  "description": "Who to find: a name, an email, a phone (4+ digits), a company or words they wrote. Omit for the most recent people.",
+                  "type": "string"
                 },
                 "limit": {
+                  "description": "People per page (default 20, max 100).",
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 100,
-                  "description": "People per page (default 20, max 100)."
+                  "maximum": 100
                 },
                 "offset": {
+                  "description": "How many to skip (pagination).",
                   "type": "integer",
-                  "minimum": 0,
-                  "description": "How many to skip (pagination)."
+                  "minimum": 0
                 }
               },
               "required": [
@@ -532,19 +532,19 @@
                   "description": "Brand whose people's companies to list (from distribute_status)."
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 },
                 "limit": {
+                  "description": "Companies per page (default 100).",
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 1000,
-                  "description": "Companies per page (default 100)."
+                  "maximum": 1000
                 },
                 "offset": {
+                  "description": "How many to skip (pagination).",
                   "type": "integer",
-                  "minimum": 0,
-                  "description": "How many to skip (pagination)."
+                  "minimum": 0
                 }
               },
               "required": [
@@ -569,8 +569,8 @@
                   "description": "Brand the person belongs to (from distribute_status)."
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 },
                 "change": {
                   "type": "string",
@@ -584,28 +584,29 @@
                   "description": "What to fix (see the description)."
                 },
                 "personId": {
-                  "type": "string",
-                  "description": "The person, from distribute_find_people. Every change but `domain_is`."
+                  "description": "The person, from distribute_find_people. Every change but `domain_is`.",
+                  "type": "string"
                 },
                 "tag": {
+                  "description": "add_tag / remove_tag: the tag to add or remove.",
                   "type": "string",
                   "enum": [
                     "personal_to_user",
                     "personal_not_to_user",
                     "professional_to_brand",
                     "professional_not_to_brand"
-                  ],
-                  "description": "add_tag / remove_tag: the tag to add or remove."
+                  ]
                 },
                 "domain": {
-                  "type": "string",
-                  "description": "add_company: the company's domain or website. domain_is: the email domain (e.g. mybiz.co)."
+                  "description": "add_company: the company's domain or website. domain_is: the email domain (e.g. mybiz.co).",
+                  "type": "string"
                 },
                 "companyId": {
-                  "type": "string",
-                  "description": "remove_company: the company's `companyId` from the person's `companies`."
+                  "description": "remove_company: the company's `companyId` from the person's `companies`.",
+                  "type": "string"
                 },
                 "tags": {
+                  "description": "add_company: how the person speaks for it (professional_to_brand and/or professional_not_to_brand). Default: their own work tags.",
                   "type": "array",
                   "items": {
                     "type": "string",
@@ -615,20 +616,19 @@
                       "professional_to_brand",
                       "professional_not_to_brand"
                     ]
-                  },
-                  "description": "add_company: how the person speaks for it (professional_to_brand and/or professional_not_to_brand). Default: their own work tags."
+                  }
                 },
                 "domainKind": {
+                  "description": "domain_is: `mailbox_provider` (a public mailbox) or `organization` (a company).",
                   "type": "string",
                   "enum": [
                     "mailbox_provider",
                     "organization"
-                  ],
-                  "description": "domain_is: `mailbox_provider` (a public mailbox) or `organization` (a company)."
+                  ]
                 },
                 "reason": {
-                  "type": "string",
-                  "description": "Why, in the user's words (kept with the fix)."
+                  "description": "Why, in the user's words (kept with the fix).",
+                  "type": "string"
                 }
               },
               "required": [
@@ -654,8 +654,8 @@
                   "description": "Brand whose fixes to list (from distribute_status)."
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 }
               },
               "required": [
@@ -680,8 +680,8 @@
                   "description": "Brand the fix was made on (from distribute_status)."
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 },
                 "correctionId": {
                   "type": "string",
@@ -711,21 +711,21 @@
                   "description": "Brand both people belong to (from distribute_status)."
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 },
                 "personIds": {
+                  "minItems": 2,
+                  "maxItems": 2,
                   "type": "array",
                   "items": {
                     "type": "string"
                   },
-                  "minItems": 2,
-                  "maxItems": 2,
                   "description": "The two people's `personId`, from distribute_find_people."
                 },
                 "reason": {
-                  "type": "string",
-                  "description": "Why, in the user's words."
+                  "description": "Why, in the user's words.",
+                  "type": "string"
                 }
               },
               "required": [
@@ -751,8 +751,8 @@
                   "description": "Brand the merge was made on (from distribute_status)."
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 },
                 "mergeId": {
                   "type": "string",
@@ -778,18 +778,18 @@
               "type": "object",
               "properties": {
                 "query": {
-                  "type": "string",
-                  "description": "What you want to do, in plain words."
+                  "description": "What you want to do, in plain words.",
+                  "type": "string"
                 },
                 "area": {
-                  "type": "string",
-                  "description": "Restrict to one area (as listed with no query), e.g. Leads, Emails, Billing."
+                  "description": "Restrict to one area (as listed with no query), e.g. Leads, Emails, Billing.",
+                  "type": "string"
                 },
                 "limit": {
+                  "description": "How many matches (default 10).",
                   "type": "integer",
                   "minimum": 1,
-                  "maximum": 50,
-                  "description": "How many matches (default 10)."
+                  "maximum": 50
                 }
               },
               "additionalProperties": false
@@ -807,8 +807,8 @@
               "type": "object",
               "properties": {
                 "operationId": {
-                  "type": "string",
-                  "description": "Operation id from distribute_find_api."
+                  "description": "Operation id from distribute_find_api.",
+                  "type": "string"
                 },
                 "method": {
                   "type": "string",
@@ -821,8 +821,8 @@
                   ]
                 },
                 "path": {
-                  "type": "string",
-                  "description": "Path template (/v1/leads/{id}) or a concrete path."
+                  "description": "Path template (/v1/leads/{id}) or a concrete path.",
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -855,6 +855,7 @@
                   "description": "Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."
                 },
                 "query": {
+                  "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}.",
                   "type": "object",
                   "additionalProperties": {
                     "type": [
@@ -862,19 +863,18 @@
                       "number",
                       "boolean"
                     ]
-                  },
-                  "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}."
+                  }
                 },
                 "body": {
                   "description": "JSON body for POST, PUT and PATCH."
                 },
                 "brandId": {
-                  "type": "string",
-                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
                 },
                 "orgId": {
-                  "type": "string",
-                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
                 }
               },
               "required": [
@@ -1029,8 +1029,8 @@
                 "type": "object",
                 "properties": {
                   "search": {
-                    "type": "string",
-                    "description": "Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive)."
+                    "description": "Only the organizations whose id or name contains this text, or that hold a brand whose id, name or domain contains it (case-insensitive).",
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -1259,8 +1259,8 @@
                     "description": "The 6-digit code emailed to it."
                   },
                   "keyName": {
-                    "type": "string",
-                    "description": "A name for the key, to recognize it later (e.g. the agent's name)."
+                    "description": "A name for the key, to recognize it later (e.g. the agent's name).",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -1329,20 +1329,20 @@
                     "description": "Balance under which the card reloads, in cents. At least 500 ($5)."
                   },
                   "success_url": {
-                    "type": "string",
-                    "description": "Page shown after paying (default https://distribute.you/?prepaid=paid)."
+                    "description": "Page shown after paying (default https://distribute.you/?prepaid=paid).",
+                    "type": "string"
                   },
                   "cancel_url": {
-                    "type": "string",
-                    "description": "Page shown if payment is cancelled (default https://distribute.you/?prepaid=cancelled)."
+                    "description": "Page shown if payment is cancelled (default https://distribute.you/?prepaid=cancelled).",
+                    "type": "string"
                   },
                   "brandId": {
-                    "type": "string",
-                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -1400,12 +1400,12 @@
                 "type": "object",
                 "properties": {
                   "brandId": {
-                    "type": "string",
-                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -1458,16 +1458,16 @@
                 "type": "object",
                 "properties": {
                   "human_id": {
-                    "type": "string",
-                    "description": "Filter by human expert ID (for styled workflows)"
+                    "description": "Filter by human expert ID (for styled workflows)",
+                    "type": "string"
                   },
                   "brandId": {
-                    "type": "string",
-                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -1520,21 +1520,21 @@
                 "type": "object",
                 "properties": {
                   "brandId": {
-                    "type": "string",
-                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   },
                   "status": {
+                    "description": "Filter by campaign status: `ongoing` (running) or `stopped`. `all`, or no status, returns every campaign. Any other value is refused.",
                     "type": "string",
                     "enum": [
                       "ongoing",
                       "stopped",
                       "all"
-                    ],
-                    "description": "Filter by campaign status: `ongoing` (running) or `stopped`. `all`, or no status, returns every campaign. Any other value is refused."
+                    ]
                   }
                 },
                 "additionalProperties": false
@@ -1587,20 +1587,20 @@
                 "type": "object",
                 "properties": {
                   "campaignId": {
-                    "type": "string",
-                    "description": "Campaign id, from distribute_list_campaigns. Required (or `campaign_id`)."
+                    "description": "Campaign id, from distribute_list_campaigns. Required (or `campaign_id`).",
+                    "type": "string"
                   },
                   "campaign_id": {
-                    "type": "string",
-                    "description": "Older name of `campaignId`, still accepted. Prefer `campaignId`."
+                    "description": "Older name of `campaignId`, still accepted. Prefer `campaignId`.",
+                    "type": "string"
                   },
                   "brandId": {
-                    "type": "string",
-                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -1653,12 +1653,12 @@
                 "type": "object",
                 "properties": {
                   "brandId": {
-                    "type": "string",
-                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -1711,16 +1711,16 @@
                 "type": "object",
                 "properties": {
                   "brand_url": {
-                    "type": "string",
-                    "description": "The brand/company URL to analyze for ICP extraction. Optional when brandId is given."
+                    "description": "The brand/company URL to analyze for ICP extraction. Optional when brandId is given.",
+                    "type": "string"
                   },
                   "brandId": {
-                    "type": "string",
-                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -1777,22 +1777,22 @@
                     "description": "Brand whose leads to list (from distribute_status)."
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   },
                   "campaignId": {
-                    "type": "string",
-                    "description": "Only leads of this campaign part (a lead's `campaignId`)."
+                    "description": "Only leads of this campaign part (a lead's `campaignId`).",
+                    "type": "string"
                   },
                   "limit": {
+                    "description": "Leads per page (default 50, max 200).",
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 200,
-                    "description": "Leads per page (default 50, max 200)."
+                    "maximum": 200
                   },
                   "cursor": {
-                    "type": "string",
-                    "description": "The `nextCursor` of the previous page."
+                    "description": "The `nextCursor` of the previous page.",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -1852,23 +1852,23 @@
                     "description": "Brand whose emails to list (from distribute_status)."
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   },
                   "campaignId": {
-                    "type": "string",
-                    "description": "Only the emails of this campaign part."
+                    "description": "Only the emails of this campaign part.",
+                    "type": "string"
                   },
                   "limit": {
+                    "description": "Emails per page (default 20, max 200).",
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 200,
-                    "description": "Emails per page (default 20, max 200)."
+                    "maximum": 200
                   },
                   "offset": {
+                    "description": "How many to skip (pagination).",
                     "type": "integer",
-                    "minimum": 0,
-                    "description": "How many to skip (pagination)."
+                    "minimum": 0
                   }
                 },
                 "required": [
@@ -1924,24 +1924,24 @@
                 "type": "object",
                 "properties": {
                   "leadId": {
-                    "type": "string",
-                    "description": "A lead's `id` from distribute_list_leads, or the person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`). Required (or `lead_id`)."
+                    "description": "A lead's `id` from distribute_list_leads, or the person's id (a list row's `leadId`, a trigger event's `ranLeads[].leadId`). Required (or `lead_id`).",
+                    "type": "string"
                   },
                   "lead_id": {
-                    "type": "string",
-                    "description": "Older name of `leadId`, still accepted. Prefer `leadId`."
+                    "description": "Older name of `leadId`, still accepted. Prefer `leadId`.",
+                    "type": "string"
                   },
                   "campaignId": {
-                    "type": "string",
-                    "description": "With a person's id: the campaign step they are on (`ranLeads[].campaignId` of the trigger event, or a lead's `campaignId`)."
+                    "description": "With a person's id: the campaign step they are on (`ranLeads[].campaignId` of the trigger event, or a lead's `campaignId`).",
+                    "type": "string"
                   },
                   "brandId": {
-                    "type": "string",
-                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -2047,23 +2047,23 @@
                     "description": "Brand whose people to search (from distribute_status)."
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   },
                   "q": {
-                    "type": "string",
-                    "description": "Who to find: a name, an email, a phone (4+ digits), a company or words they wrote. Omit for the most recent people."
+                    "description": "Who to find: a name, an email, a phone (4+ digits), a company or words they wrote. Omit for the most recent people.",
+                    "type": "string"
                   },
                   "limit": {
+                    "description": "People per page (default 20, max 100).",
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 100,
-                    "description": "People per page (default 20, max 100)."
+                    "maximum": 100
                   },
                   "offset": {
+                    "description": "How many to skip (pagination).",
                     "type": "integer",
-                    "minimum": 0,
-                    "description": "How many to skip (pagination)."
+                    "minimum": 0
                   }
                 },
                 "required": [
@@ -2123,19 +2123,19 @@
                     "description": "Brand whose people's companies to list (from distribute_status)."
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   },
                   "limit": {
+                    "description": "Companies per page (default 100).",
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 1000,
-                    "description": "Companies per page (default 100)."
+                    "maximum": 1000
                   },
                   "offset": {
+                    "description": "How many to skip (pagination).",
                     "type": "integer",
-                    "minimum": 0,
-                    "description": "How many to skip (pagination)."
+                    "minimum": 0
                   }
                 },
                 "required": [
@@ -2195,8 +2195,8 @@
                     "description": "Brand the person belongs to (from distribute_status)."
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   },
                   "change": {
                     "type": "string",
@@ -2210,28 +2210,29 @@
                     "description": "What to fix (see the description)."
                   },
                   "personId": {
-                    "type": "string",
-                    "description": "The person, from distribute_find_people. Every change but `domain_is`."
+                    "description": "The person, from distribute_find_people. Every change but `domain_is`.",
+                    "type": "string"
                   },
                   "tag": {
+                    "description": "add_tag / remove_tag: the tag to add or remove.",
                     "type": "string",
                     "enum": [
                       "personal_to_user",
                       "personal_not_to_user",
                       "professional_to_brand",
                       "professional_not_to_brand"
-                    ],
-                    "description": "add_tag / remove_tag: the tag to add or remove."
+                    ]
                   },
                   "domain": {
-                    "type": "string",
-                    "description": "add_company: the company's domain or website. domain_is: the email domain (e.g. mybiz.co)."
+                    "description": "add_company: the company's domain or website. domain_is: the email domain (e.g. mybiz.co).",
+                    "type": "string"
                   },
                   "companyId": {
-                    "type": "string",
-                    "description": "remove_company: the company's `companyId` from the person's `companies`."
+                    "description": "remove_company: the company's `companyId` from the person's `companies`.",
+                    "type": "string"
                   },
                   "tags": {
+                    "description": "add_company: how the person speaks for it (professional_to_brand and/or professional_not_to_brand). Default: their own work tags.",
                     "type": "array",
                     "items": {
                       "type": "string",
@@ -2241,20 +2242,19 @@
                         "professional_to_brand",
                         "professional_not_to_brand"
                       ]
-                    },
-                    "description": "add_company: how the person speaks for it (professional_to_brand and/or professional_not_to_brand). Default: their own work tags."
+                    }
                   },
                   "domainKind": {
+                    "description": "domain_is: `mailbox_provider` (a public mailbox) or `organization` (a company).",
                     "type": "string",
                     "enum": [
                       "mailbox_provider",
                       "organization"
-                    ],
-                    "description": "domain_is: `mailbox_provider` (a public mailbox) or `organization` (a company)."
+                    ]
                   },
                   "reason": {
-                    "type": "string",
-                    "description": "Why, in the user's words (kept with the fix)."
+                    "description": "Why, in the user's words (kept with the fix).",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -2315,8 +2315,8 @@
                     "description": "Brand whose fixes to list (from distribute_status)."
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -2376,8 +2376,8 @@
                     "description": "Brand the fix was made on (from distribute_status)."
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   },
                   "correctionId": {
                     "type": "string",
@@ -2442,21 +2442,21 @@
                     "description": "Brand both people belong to (from distribute_status)."
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   },
                   "personIds": {
+                    "minItems": 2,
+                    "maxItems": 2,
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "minItems": 2,
-                    "maxItems": 2,
                     "description": "The two people's `personId`, from distribute_find_people."
                   },
                   "reason": {
-                    "type": "string",
-                    "description": "Why, in the user's words."
+                    "description": "Why, in the user's words.",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -2517,8 +2517,8 @@
                     "description": "Brand the merge was made on (from distribute_status)."
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   },
                   "mergeId": {
                     "type": "string",
@@ -2579,18 +2579,18 @@
                 "type": "object",
                 "properties": {
                   "query": {
-                    "type": "string",
-                    "description": "What you want to do, in plain words."
+                    "description": "What you want to do, in plain words.",
+                    "type": "string"
                   },
                   "area": {
-                    "type": "string",
-                    "description": "Restrict to one area (as listed with no query), e.g. Leads, Emails, Billing."
+                    "description": "Restrict to one area (as listed with no query), e.g. Leads, Emails, Billing.",
+                    "type": "string"
                   },
                   "limit": {
+                    "description": "How many matches (default 10).",
                     "type": "integer",
                     "minimum": 1,
-                    "maximum": 50,
-                    "description": "How many matches (default 10)."
+                    "maximum": 50
                   }
                 },
                 "additionalProperties": false
@@ -2643,8 +2643,8 @@
                 "type": "object",
                 "properties": {
                   "operationId": {
-                    "type": "string",
-                    "description": "Operation id from distribute_find_api."
+                    "description": "Operation id from distribute_find_api.",
+                    "type": "string"
                   },
                   "method": {
                     "type": "string",
@@ -2657,8 +2657,8 @@
                     ]
                   },
                   "path": {
-                    "type": "string",
-                    "description": "Path template (/v1/leads/{id}) or a concrete path."
+                    "description": "Path template (/v1/leads/{id}) or a concrete path.",
+                    "type": "string"
                   }
                 },
                 "additionalProperties": false
@@ -2726,6 +2726,7 @@
                     "description": "Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."
                   },
                   "query": {
+                    "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}.",
                     "type": "object",
                     "additionalProperties": {
                       "type": [
@@ -2733,19 +2734,18 @@
                         "number",
                         "boolean"
                       ]
-                    },
-                    "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}."
+                    }
                   },
                   "body": {
                     "description": "JSON body for POST, PUT and PATCH."
                   },
                   "brandId": {
-                    "type": "string",
-                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given."
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
                   },
                   "orgId": {
-                    "type": "string",
-                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand."
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
                   }
                 },
                 "required": [

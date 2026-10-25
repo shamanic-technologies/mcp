@@ -525,7 +525,7 @@ export const toolDefinitions = {
     schema: z.object({
       method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).describe("HTTP method of the operation."),
       path: z.string().describe("Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."),
-      query: z.record(z.union([z.string(), z.number(), z.boolean()])).optional().describe("Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}."),
+      query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}."),
       body: z.unknown().optional().describe("JSON body for POST, PUT and PATCH."),
       ...targetShape,
     }),
