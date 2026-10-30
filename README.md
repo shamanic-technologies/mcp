@@ -10,7 +10,7 @@ An AI agent can open a distribute.you account, get an API key and prepay, all th
 
 1. Connect to `https://mcp.distribute.you/mcp` with no header.
 2. `distribute_signup_start` with an email the agent can read and a phone number in international format (`+33612345678`, only its format is checked). A 6-digit code is emailed.
-3. `distribute_signup_complete` with the email and the code. It returns `apiKey` (shown once: store it). The session uses it right away. Later, reconnect with `Authorization: Bearer <apiKey>`, or call `https://api.distribute.you` with that header. Each call makes a new key; an email that already has an account gets one more key for it.
+3. `distribute_signup_complete` with the email and the code. It returns `apiKey` (shown once: store it). The session uses it right away, even one opened with a placeholder or refused key. Later, reconnect with `Authorization: Bearer <apiKey>`, or call `https://api.distribute.you` with that header. Each call makes a new key; an email that already has an account gets one more key for it.
 4. Reading the account is free. Before anything that spends, `distribute_prepay` with amounts in cents (minimums: `topup_amount_cents` 1000 = $10, `auto_topup_amount_cents` 1500 = $15, `auto_topup_threshold_cents` 500 = $5). It returns a payment `url`: open it, or hand it to a human to pay by card. Auto top-up is required. Less than a minimum is refused with `amount_below_minimum`, naming the field.
 5. `distribute_prepaid_status` until `state` is `active`.
 

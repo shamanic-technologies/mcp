@@ -6,7 +6,8 @@ import cors from "cors";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { toolDefinitions, handleToolCall, mintedKey } from "./tools/index.js";
-import { runWithApiKey } from "./lib/api-client.js";
+import { runWithApiKey, callApi } from "./lib/api-client.js";
+import { SessionKey, newSessionKey, applyHeaderKey, noteKeyRefused, adoptMintedKey } from "./lib/session-key.js";
 import { discoveryDocument, notFoundDocument, SERVER_NAME, SERVER_VERSION } from "./discovery.js";
 
 const PORT = process.env.PORT || 3000;
@@ -24,9 +25,8 @@ app.use(cors({
 app.use(express.json());
 
 // Session data includes transport and API key
-interface SessionData {
+interface SessionData extends SessionKey {
   transport: StreamableHTTPServerTransport;
-  apiKey: string | null;
 }
 
 const sessions = new Map<string, SessionData>();
@@ -100,12 +100,19 @@ app.post("/mcp", async (req: Request, res: Response) => {
             // The call runs under THIS session's key, bound to its own async
             // context: concurrent sessions never see each other's key.
             const session = sessions.get(sessionId!);
-            const result = await runWithApiKey(session?.apiKey ?? null, () => handleToolCall(name, args), name);
+            const result = await runWithApiKey(
+              session?.apiKey ?? null,
+              () => handleToolCall(name, args),
+              name,
+              (key) => session && noteKeyRefused(session, key),
+            );
             // An agent that signed up through this session keeps working in it:
-            // a session with no key adopts the key it just minted. A session that
-            // already has one keeps it (the agent reconnects to switch).
+            // a session with no key, or with a key the gateway refuses, adopts the
+            // key it just minted. A session whose key works keeps it.
             const minted = mintedKey(name, result);
-            if (minted && session && !session.apiKey) session.apiKey = minted;
+            if (minted && session) {
+              await adoptMintedKey(session, minted, async (key) => (await callApi("/v1/me", { apiKey: key })).status === 401);
+            }
             return {
               content: [
                 {
@@ -131,14 +138,15 @@ app.post("/mcp", async (req: Request, res: Response) => {
       });
 
       // Store session data with API key
-      sessionData = { transport, apiKey };
+      sessionData = { transport, ...newSessionKey(apiKey) };
       sessions.set(sessionId, sessionData);
 
       // Connect server to transport
       await mcpServer.connect(transport);
-    } else if (apiKey) {
-      // Update API key if provided in subsequent requests
-      sessionData.apiKey = apiKey;
+    } else {
+      // A later request's header replaces the key, except the refused one a
+      // client keeps re-sending after the agent signed up in this session.
+      applyHeaderKey(sessionData, apiKey);
     }
 
     // Set session header (sessionId is always defined at this point)

@@ -222,7 +222,7 @@ export const toolDefinitions = {
   distribute_signup_complete: {
     description:
       "Step 2 of 2: send the 6-digit code emailed by distribute_signup_start and get an API key. " +
-      "This MCP session uses the new key at once (when it had none), so every other tool works right after. " +
+      "This MCP session uses the new key at once (when it had none or its key was refused), so every other tool works right after. " +
       "Keep `apiKey`: it is shown once. To use it later, reconnect this MCP server with the header `Authorization: Bearer <apiKey>`, " +
       "or call https://api.distribute.you with that header. Each call makes a NEW key. " +
       "Reading the account is free; anything that spends needs a prepaid balance first (distribute_prepay).",
@@ -624,6 +624,15 @@ export async function handleToolCall(
 /** Above this many organizations, distribute_status lists them without their brands, so the answer fits an assistant's context. */
 export const STATUS_FULL_LIST_MAX_ORGS = 20;
 
+/** How to get a key with no human: the same steps whether the session has no key or a refused one. */
+const SIGNUP_INSTRUCTIONS = [
+  "1. Call distribute_signup_start with an email you can read and a phone number (+33612345678). A 6-digit code is emailed.",
+  "2. Call distribute_signup_complete with that email and code. It returns an API key, and this session uses it right away.",
+  "3. Reading the account is free. To spend, prepay with distribute_prepay (from $10, auto top-up required) and pay at the url it returns.",
+  "Already have a key? Send it as the header Authorization: Bearer <your key> (in an MCP client, put that header in this server's configuration and reconnect). " +
+    "A person can also create one at https://dashboard.distribute.you (organization, then API Key).",
+];
+
 async function handleStatus(args: Record<string, unknown> = {}) {
   const status = getConfigStatus();
   
@@ -631,13 +640,7 @@ async function handleStatus(args: Record<string, unknown> = {}) {
     return {
       status: "not_configured",
       message: "No distribute.you API key on this session. " + NO_HUMAN_NEEDED,
-      instructions: [
-        "1. Call distribute_signup_start with an email you can read and a phone number (+33612345678). A 6-digit code is emailed.",
-        "2. Call distribute_signup_complete with that email and code. It returns an API key, and this session uses it right away.",
-        "3. Reading the account is free. To spend, prepay with distribute_prepay (from $10, auto top-up required) and pay at the url it returns.",
-        "Already have a key? Send it as the header Authorization: Bearer <your key> (in an MCP client, put that header in this server's configuration and reconnect). " +
-          "A person can also create one at https://dashboard.distribute.you (organization, then API Key).",
-      ],
+      instructions: SIGNUP_INSTRUCTIONS,
     };
   }
 
@@ -654,8 +657,10 @@ async function handleStatus(args: Record<string, unknown> = {}) {
       // message, so this server cannot tell them apart either. Say so, rather
       // than let the caller guess one of the three.
       hint:
-        "The API refused this key. A revoked, deleted or mistyped key all look the same from here. " +
-        "Check the key at https://dashboard.distribute.you (organization, then API Key) and send it as `Authorization: Bearer <key>`.",
+        "The API refused this key. A revoked, deleted, mistyped or placeholder key (distrib.usr_YOUR_KEY) all look the same from here. " +
+        "No working key? " + NO_HUMAN_NEEDED + " Follow `instructions`: this session switches to the new key right away. " +
+        "Have a real key? Check it at https://dashboard.distribute.you (organization, then API Key) and send it as `Authorization: Bearer <key>`.",
+      instructions: SIGNUP_INSTRUCTIONS,
     };
   }
 
@@ -1646,7 +1651,7 @@ async function handleSignupComplete(args: Record<string, unknown>) {
     ...data,
     keepThisKey: "apiKey is shown once. Store it: it is the account's password.",
     useTheKey: {
-      thisSession: "This MCP session now uses this key when it had none: call distribute_status next.",
+      thisSession: "This MCP session now uses this key when it had none or its key was refused: call distribute_status next.",
       reconnectMcp: "Later, connect to https://mcp.distribute.you/mcp with the header `Authorization: Bearer <apiKey>`.",
       api: "Or call https://api.distribute.you with the same header (first call: GET /v1/me).",
     },
