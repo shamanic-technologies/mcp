@@ -54,14 +54,21 @@ export interface ApiResponse<T> {
  * calling at the same time could then send one customer's request under another
  * customer's key as soon as a tool awaited between two gateway calls.
  */
-const callContext = new AsyncLocalStorage<{ key: string | null; tool: string | null }>();
+const callContext = new AsyncLocalStorage<{ key: string | null; tool: string | null; onKeyRefused?: (key: string) => void }>();
 
 /**
  * Run `fn` with `key` as the key every gateway call inside it is made with, and
  * `tool` as the MCP tool those calls are made for (sent as MCP_TOOL_HEADER).
+ * `onKeyRefused` hears when the gateway answers 401 to that key, so the session
+ * knows its key is dead and may adopt the one a signup mints.
  */
-export function runWithApiKey<T>(key: string | null, fn: () => Promise<T>, tool: string | null = null): Promise<T> {
-  return callContext.run({ key, tool }, fn);
+export function runWithApiKey<T>(
+  key: string | null,
+  fn: () => Promise<T>,
+  tool: string | null = null,
+  onKeyRefused?: (key: string) => void,
+): Promise<T> {
+  return callContext.run({ key, tool, onKeyRefused }, fn);
 }
 
 export function getApiKey(): string | null {
@@ -76,6 +83,16 @@ export const NO_KEY_MESSAGE = "This session has no distribute.you API key.";
 export const NO_KEY_FIX =
   "No human needed: call distribute_signup_start with an email and a phone, then distribute_signup_complete with the code emailed. " +
   "It returns an API key and this session uses it right away. An existing key goes in the header `Authorization: Bearer <key>`.";
+
+/**
+ * What a refused key adds to the gateway's 401. The gateway's own `fix` sends a
+ * person to the dashboard; an agent holding a placeholder or dead key must also
+ * learn it can open an account itself (2026-10-31: agents given the landing's
+ * `distrib.usr_YOUR_KEY` header sent their human to the dashboard instead).
+ */
+export const KEY_REFUSED_SIGNUP =
+  "No working key? No human needed: call distribute_signup_start with an email and a phone, then distribute_signup_complete with the code emailed. " +
+  "It returns a new API key and this session switches to it right away, even though it was opened with the refused key.";
 
 /** Header values are ASCII, one line, at most 200 chars (what the gateway keeps). */
 function headerSafe(value: string): string {
@@ -202,6 +219,11 @@ export async function callApi<T>(
       if (response.status >= 500 && isTransportFailure(errorBody)) {
         const cause = String(errorBody?.error ?? errorBody?.message);
         return { error: UNREACHABLE_CODE, errorBody: unreachable(cause), status: response.status };
+      }
+      // A refused key: say so to the session, and name the keyless signup.
+      if (response.status === 401 && key) {
+        callContext.getStore()?.onKeyRefused?.(key);
+        errorBody = { ...(errorBody ?? { error: "Invalid API key" }), signUpInstead: KEY_REFUSED_SIGNUP };
       }
       return {
         error: (typeof errorBody?.error === "string" && errorBody.error) || `HTTP ${response.status}`,

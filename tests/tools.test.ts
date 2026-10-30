@@ -738,7 +738,7 @@ describe("distribute_status says whose key this is", () => {
 
     expect(out.status).toBe("error");
     expect(out.message).toBe("Invalid API key");
-    expect(out.hint).toContain("revoked, deleted or mistyped");
+    expect(out.hint).toContain("revoked, deleted, mistyped or placeholder");
     expect(out.hint).toContain("Authorization: Bearer");
   });
 });

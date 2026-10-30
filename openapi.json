@@ -107,7 +107,7 @@
         }
       },
       "distribute_signup_complete": {
-        "description": "Step 2 of 2: send the 6-digit code emailed by distribute_signup_start and get an API key. This MCP session uses the new key at once (when it had none), so every other tool works right after. Keep `apiKey`: it is shown once. To use it later, reconnect this MCP server with the header `Authorization: Bearer <apiKey>`, or call https://api.distribute.you with that header. Each call makes a NEW key. Reading the account is free; anything that spends needs a prepaid balance first (distribute_prepay).",
+        "description": "Step 2 of 2: send the 6-digit code emailed by distribute_signup_start and get an API key. This MCP session uses the new key at once (when it had none or its key was refused), so every other tool works right after. Keep `apiKey`: it is shown once. To use it later, reconnect this MCP server with the header `Authorization: Bearer <apiKey>`, or call https://api.distribute.you with that header. Each call makes a NEW key. Reading the account is free; anything that spends needs a prepaid balance first (distribute_prepay).",
         "inputSchema": {
           "$ref": "#/definitions/distribute_signup_complete",
           "definitions": {
@@ -1242,7 +1242,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Step 2 of 2: send the 6-digit code emailed by distribute_signup_start and get an API key. This MCP session uses the new key at once (when it had none), so every other tool works right after. Keep `apiKey`: it is shown once. To use it later, reconnect this MCP server with the header `Authorization: Bearer <apiKey>`, or call https://api.distribute.you with that header. Each call makes a NEW key. Reading the account is free; anything that spends needs a prepaid balance first (distribute_prepay).",
+        "summary": "Step 2 of 2: send the 6-digit code emailed by distribute_signup_start and get an API key. This MCP session uses the new key at once (when it had none or its key was refused), so every other tool works right after. Keep `apiKey`: it is shown once. To use it later, reconnect this MCP server with the header `Authorization: Bearer <apiKey>`, or call https://api.distribute.you with that header. Each call makes a NEW key. Reading the account is free; anything that spends needs a prepaid balance first (distribute_prepay).",
         "description": "MCP Tool: distribute_signup_complete. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_signup_complete\".",
         "requestBody": {
           "content": {
