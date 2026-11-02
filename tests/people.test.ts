@@ -142,13 +142,17 @@ describe("listing and undoing fixes", () => {
     mockCallApi.mockImplementation(async (path: string) =>
       path.startsWith("/v1/orgs/people/corrections")
         ? { data: { brandId: BRAND, corrections: [{ correctionId: FIX, kind: "tag_add", personId: MOM, target: { tag: "professional_to_brand" } }] } }
-        : { data: { brandId: BRAND, merges: [{ mergeId: "m1" }] } },
+        : path.startsWith("/v1/orgs/people/merges")
+          ? { data: { brandId: BRAND, merges: [{ mergeId: "m1" }] } }
+          : { data: { brandId: BRAND, handles: [{ handleId: "h1" }] } },
     );
     const result = (await handleToolCall("distribute_list_people_corrections", { brandId: BRAND })) as Record<string, any>;
     expect(mockCallApi).toHaveBeenCalledWith(`/v1/orgs/people/corrections?brandId=${BRAND}`);
     expect(mockCallApi).toHaveBeenCalledWith(`/v1/orgs/people/merges?brandId=${BRAND}`);
     expect(result.corrections[0]).toMatchObject({ correctionId: FIX, change: "add_tag" });
     expect(result.merges).toEqual([{ mergeId: "m1" }]);
+    expect(mockCallApi).toHaveBeenCalledWith(`/v1/orgs/people/handles?brandId=${BRAND}`);
+    expect(result.contacts).toEqual([{ handleId: "h1" }]);
   });
 
   it("undoes a correction by id", async () => {
@@ -168,6 +172,54 @@ describe("listing and undoing fixes", () => {
     expect(mockCallApi).toHaveBeenCalledWith(`/v1/orgs/people/merges/m1/undo?brandId=${BRAND}`, { method: "POST", body: { brandId: BRAND } });
   });
 
+  it("records another number a person gave and takes it back", async () => {
+    mockCallApi.mockResolvedValue({ status: 201, data: { handle: { handleId: "h1", kind: "phone", handle: "+33600000002", preferred: true }, duplicate: false, personId: MOM, whatsapp: { status: "found", threadsJoined: 0, error: null }, rebuild: "started" } });
+    const result = (await handleToolCall("distribute_add_person_contact", {
+      brandId: BRAND,
+      personId: MOM,
+      phone: "+33600000002",
+      channel: "whatsapp",
+      quote: "don't message me on this number, use +33600000002 on WhatsApp",
+    })) as Record<string, any>;
+    expect(mockCallApi).toHaveBeenCalledWith(`/v1/orgs/people/handles?brandId=${BRAND}`, {
+      method: "POST",
+      body: {
+        brandId: BRAND,
+        personId: MOM,
+        phone: "+33600000002",
+        channel: "whatsapp",
+        evidence: { source: "mcp", channel: "whatsapp", text: "don't message me on this number, use +33600000002 on WhatsApp" },
+      },
+    });
+    expect(result.handle.handleId).toBe("h1");
+    expect(result.next).toContain("distribute_undo_person_contact");
+
+    mockCallApi.mockResolvedValue({ data: { handle: { handleId: "h1", active: false }, duplicate: false, rebuild: "started" } });
+    await handleToolCall("distribute_undo_person_contact", { brandId: BRAND, handleId: "h1" });
+    expect(mockCallApi).toHaveBeenCalledWith(`/v1/orgs/people/handles/h1/undo?brandId=${BRAND}`, { method: "POST", body: { brandId: BRAND } });
+  });
+
+  it("names the person by the number they wrote from, email and not preferred", async () => {
+    mockCallApi.mockResolvedValue({ status: 201, data: { handle: { handleId: "h2" }, duplicate: false } });
+    await handleToolCall("distribute_add_person_contact", { brandId: BRAND, personKey: "phone:+33600000001", email: "ann@acme.com", preferred: false });
+    expect(mockCallApi).toHaveBeenCalledWith(`/v1/orgs/people/handles?brandId=${BRAND}`, {
+      method: "POST",
+      body: { brandId: BRAND, personKey: "phone:+33600000001", email: "ann@acme.com", preferred: false, evidence: { source: "mcp" } },
+    });
+  });
+
+  it("refuses an ambiguous contact before any call", async () => {
+    await expect(handleToolCall("distribute_add_person_contact", { brandId: BRAND, personId: MOM, phone: "+33600000002", email: "a@b.co" })).rejects.toThrow(/exactly one of `phone`/);
+    await expect(handleToolCall("distribute_add_person_contact", { brandId: BRAND, phone: "+33600000002" })).rejects.toThrow(/exactly one of `personId`/);
+    expect(mockCallApi).not.toHaveBeenCalled();
+  });
+
+  it("reads an invalid number as what to do next", async () => {
+    mockCallApi.mockResolvedValue({ error: "x", status: 422, errorBody: { type: "refused", reason: "invalid_handle", error: "not an international number" } });
+    const err = await handleToolCall("distribute_add_person_contact", { brandId: BRAND, personId: MOM, phone: "0600000002" }).catch((e: Error) => e);
+    expect(JSON.parse((err as Error).message)).toMatchObject({ status: 422, reason: "invalid_handle" });
+  });
+
   it("reads the companies of the brand's people", async () => {
     mockCallApi.mockResolvedValue({ data: { brandId: BRAND, total: 1, organizations: [{ companyId: FIX, domains: ["acme.com"], people: 2, tags: [] }] } });
     const result = (await handleToolCall("distribute_list_people_companies", { brandId: BRAND })) as Record<string, any>;
@@ -185,6 +237,8 @@ describe("every people tool says when to use it, in the user's words", () => {
     "distribute_undo_people_correction",
     "distribute_merge_people",
     "distribute_undo_people_merge",
+    "distribute_add_person_contact",
+    "distribute_undo_person_contact",
   ] as const;
   it("names its trigger phrases", () => {
     const d = toolDefinitions as Record<string, { description: string }>;
@@ -193,6 +247,8 @@ describe("every people tool says when to use it, in the user's words", () => {
     expect(d.distribute_correct_person.description).toContain("mybiz.co is a company, not a public mailbox");
     expect(d.distribute_merge_people.description).toContain("these two are the same person");
     expect(d.distribute_undo_people_correction.description).toContain("undo that");
+    expect(d.distribute_add_person_contact.description).toContain("don't message me on this number");
+    expect(d.distribute_undo_person_contact.description).toContain("that was wrong");
     for (const t of tools) expect(d[t]).toBeDefined();
   });
 });

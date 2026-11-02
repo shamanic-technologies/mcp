@@ -642,7 +642,7 @@
         }
       },
       "distribute_list_people_corrections": {
-        "description": "List every fix stated on a brand's people, newest first, undone ones included: `corrections` (tags, companies, domain verdicts; each with its `correctionId`, `change`, the person, `reason`, when, and `undoneAt` once taken back) and `merges` (two people stated as one, each with its `mergeId`). Use it for \"what did I change?\" or to find the fix to take back when the user says \"undo that\" about an earlier one. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "List every fix stated on a brand's people, newest first, undone ones included: `corrections` (tags, companies, domain verdicts; each with its `correctionId`, `change`, the person, `reason`, when, and `undoneAt` once taken back) `merges` (two people stated as one, each with its `mergeId`) and `contacts` (phones / emails recorded with distribute_add_person_contact, each with its `handleId`). Use it for \"what did I change?\" or to find the fix to take back when the user says \"undo that\" about an earlier one. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_list_people_corrections",
           "definitions": {
@@ -762,6 +762,95 @@
               "required": [
                 "brandId",
                 "mergeId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_add_person_contact": {
+        "description": "Record another phone number or email a person gave, when they say \"don't message me on this number, use +33600000002 on WhatsApp\", \"reach me on my other number\" or \"write to my new address\". Any channel. The new number or address joins the SAME person (one person, one history), and by default (`preferred` true) it is where the brand reaches them from now on: the brand's WhatsApp messages to that person go to the new number. `preferred: false` only records that it is theirs. Name the person with `personId` (distribute_find_people) or, when you only have the number or address they wrote from, `personKey` (`phone:+<digits>` or `email:<address>`); the old number itself is not needed, the person is enough. Pass exactly one of `phone` (international: + and country code) or `email`, and their own words in `quote`. A phone is checked on WhatsApp at once (`whatsapp.status`: found, not_on_whatsapp, invalid_number, not_connected, failed). The person shows it (`phones` / `emails`, `preferredContact`) within about a minute. Keep the returned `handleId`: \"that was wrong\" / \"undo that\" = distribute_undo_person_contact. Refusals come back with their `reason`: `person_not_found`, `invalid_handle` (a number without country code, a malformed address). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_add_person_contact",
+          "definitions": {
+            "distribute_add_person_contact": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand the person talks with (from distribute_status)."
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                },
+                "personId": {
+                  "description": "The person's `personId`, from distribute_find_people. Exactly one of personId / personKey.",
+                  "type": "string"
+                },
+                "personKey": {
+                  "description": "The number or address the person wrote from: `phone:+33612345678` or `email:jane@acme.com`.",
+                  "type": "string"
+                },
+                "phone": {
+                  "description": "The new phone, international (+ and country code). Exactly one of phone / email.",
+                  "type": "string"
+                },
+                "email": {
+                  "description": "The new email address.",
+                  "type": "string"
+                },
+                "preferred": {
+                  "description": "Default true: reach them there from now on. false = only record that it is theirs.",
+                  "type": "boolean"
+                },
+                "channel": {
+                  "description": "Where they want to be reached on it, in their words: whatsapp, email, telegram...",
+                  "type": "string"
+                },
+                "quote": {
+                  "description": "The person's own words, as they wrote them.",
+                  "type": "string"
+                },
+                "reason": {
+                  "description": "Why, in the user's words.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "brandId"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_undo_person_contact": {
+        "description": "Take back a phone or email recorded with distribute_add_person_contact (\"that was wrong\", \"undo that\", \"it is not their number\"): it no longer joins the person nor is where they are reached, within about a minute. Pass its `handleId` (from the answer, or `contacts` in distribute_list_people_corrections). Undoing twice answers `duplicate: true`; an unknown id is refused `handle_not_found`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_undo_person_contact",
+          "definitions": {
+            "distribute_undo_person_contact": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "type": "string",
+                  "description": "Brand the contact was recorded on (from distribute_status)."
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                },
+                "handleId": {
+                  "type": "string",
+                  "description": "The recorded contact to take back."
+                }
+              },
+              "required": [
+                "brandId",
+                "handleId"
               ],
               "additionalProperties": false
             }
@@ -2302,7 +2391,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "List every fix stated on a brand's people, newest first, undone ones included: `corrections` (tags, companies, domain verdicts; each with its `correctionId`, `change`, the person, `reason`, when, and `undoneAt` once taken back) and `merges` (two people stated as one, each with its `mergeId`). Use it for \"what did I change?\" or to find the fix to take back when the user says \"undo that\" about an earlier one. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "List every fix stated on a brand's people, newest first, undone ones included: `corrections` (tags, companies, domain verdicts; each with its `correctionId`, `change`, the person, `reason`, when, and `undoneAt` once taken back) `merges` (two people stated as one, each with its `mergeId`) and `contacts` (phones / emails recorded with distribute_add_person_contact, each with its `handleId`). Use it for \"what did I change?\" or to find the fix to take back when the user says \"undo that\" about an earlier one. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_list_people_corrections. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_list_people_corrections\".",
         "requestBody": {
           "content": {
@@ -2528,6 +2617,165 @@
                 "required": [
                   "brandId",
                   "mergeId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_add_person_contact": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Record another phone number or email a person gave, when they say \"don't message me on this number, use +33600000002 on WhatsApp\", \"reach me on my other number\" or \"write to my new address\". Any channel. The new number or address joins the SAME person (one person, one history), and by default (`preferred` true) it is where the brand reaches them from now on: the brand's WhatsApp messages to that person go to the new number. `preferred: false` only records that it is theirs. Name the person with `personId` (distribute_find_people) or, when you only have the number or address they wrote from, `personKey` (`phone:+<digits>` or `email:<address>`); the old number itself is not needed, the person is enough. Pass exactly one of `phone` (international: + and country code) or `email`, and their own words in `quote`. A phone is checked on WhatsApp at once (`whatsapp.status`: found, not_on_whatsapp, invalid_number, not_connected, failed). The person shows it (`phones` / `emails`, `preferredContact`) within about a minute. Keep the returned `handleId`: \"that was wrong\" / \"undo that\" = distribute_undo_person_contact. Refusals come back with their `reason`: `person_not_found`, `invalid_handle` (a number without country code, a malformed address). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_add_person_contact. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_add_person_contact\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand the person talks with (from distribute_status)."
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  },
+                  "personId": {
+                    "description": "The person's `personId`, from distribute_find_people. Exactly one of personId / personKey.",
+                    "type": "string"
+                  },
+                  "personKey": {
+                    "description": "The number or address the person wrote from: `phone:+33612345678` or `email:jane@acme.com`.",
+                    "type": "string"
+                  },
+                  "phone": {
+                    "description": "The new phone, international (+ and country code). Exactly one of phone / email.",
+                    "type": "string"
+                  },
+                  "email": {
+                    "description": "The new email address.",
+                    "type": "string"
+                  },
+                  "preferred": {
+                    "description": "Default true: reach them there from now on. false = only record that it is theirs.",
+                    "type": "boolean"
+                  },
+                  "channel": {
+                    "description": "Where they want to be reached on it, in their words: whatsapp, email, telegram...",
+                    "type": "string"
+                  },
+                  "quote": {
+                    "description": "The person's own words, as they wrote them.",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "description": "Why, in the user's words.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "brandId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_undo_person_contact": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Take back a phone or email recorded with distribute_add_person_contact (\"that was wrong\", \"undo that\", \"it is not their number\"): it no longer joins the person nor is where they are reached, within about a minute. Pass its `handleId` (from the answer, or `contacts` in distribute_list_people_corrections). Undoing twice answers `duplicate: true`; an unknown id is refused `handle_not_found`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_undo_person_contact. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_undo_person_contact\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": "string",
+                    "description": "Brand the contact was recorded on (from distribute_status)."
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  },
+                  "handleId": {
+                    "type": "string",
+                    "description": "The recorded contact to take back."
+                  }
+                },
+                "required": [
+                  "brandId",
+                  "handleId"
                 ],
                 "additionalProperties": false
               }
