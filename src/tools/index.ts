@@ -444,7 +444,7 @@ export const toolDefinitions = {
   distribute_list_people_corrections: {
     description:
       "List every fix stated on a brand's people, newest first, undone ones included: `corrections` (tags, companies, domain verdicts; each with its `correctionId`, " +
-      "`change`, the person, `reason`, when, and `undoneAt` once taken back) and `merges` (two people stated as one, each with its `mergeId`). " +
+      "`change`, the person, `reason`, when, and `undoneAt` once taken back) `merges` (two people stated as one, each with its `mergeId`) and `contacts` (phones / emails recorded with distribute_add_person_contact, each with its `handleId`). " +
       "Use it for \"what did I change?\" or to find the fix to take back when the user says \"undo that\" about an earlier one. " +
       TARGET_HINT,
     schema: z.object({
@@ -489,6 +489,42 @@ export const toolDefinitions = {
       ...targetShape,
       brandId: z.string().describe("Brand the merge was made on (from distribute_status)."),
       mergeId: z.string().describe("The merge to take back."),
+    }),
+  },
+  distribute_add_person_contact: {
+    description:
+      "Record another phone number or email a person gave, when they say \"don't message me on this number, use +33600000002 on WhatsApp\", " +
+      "\"reach me on my other number\" or \"write to my new address\". Any channel. The new number or address joins the SAME person (one person, one history), " +
+      "and by default (`preferred` true) it is where the brand reaches them from now on: the brand's WhatsApp messages to that person go to the new number. " +
+      "`preferred: false` only records that it is theirs. Name the person with `personId` (distribute_find_people) or, when you only have the number or address they wrote from, " +
+      "`personKey` (`phone:+<digits>` or `email:<address>`). Pass exactly one of `phone` (international: + and country code) or `email`, and their own words in `quote`. " +
+      "A phone is checked on WhatsApp at once (`whatsapp.status`: found, not_on_whatsapp, invalid_number, not_connected, failed). " +
+      "The person shows it (`phones` / `emails`, `preferredContact`) within about a minute. Keep the returned `handleId`: \"that was wrong\" / \"undo that\" = distribute_undo_person_contact. " +
+      "Refusals come back with their `reason`: `person_not_found`, `invalid_handle` (a number without country code, a malformed address). " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand the person talks with (from distribute_status)."),
+      personId: z.string().optional().describe("The person's `personId`, from distribute_find_people. Exactly one of personId / personKey."),
+      personKey: z.string().optional().describe("The number or address the person wrote from: `phone:+33612345678` or `email:jane@acme.com`."),
+      phone: z.string().optional().describe("The new phone, international (+ and country code). Exactly one of phone / email."),
+      email: z.string().optional().describe("The new email address."),
+      preferred: z.boolean().optional().describe("Default true: reach them there from now on. false = only record that it is theirs."),
+      channel: z.string().optional().describe("Where they want to be reached on it, in their words: whatsapp, email, telegram..."),
+      quote: z.string().optional().describe("The person's own words, as they wrote them."),
+      reason: z.string().optional().describe("Why, in the user's words."),
+    }),
+  },
+  distribute_undo_person_contact: {
+    description:
+      "Take back a phone or email recorded with distribute_add_person_contact (\"that was wrong\", \"undo that\", \"it is not their number\"): it no longer joins the person " +
+      "nor is where they are reached, within about a minute. Pass its `handleId` (from the answer, or `contacts` in distribute_list_people_corrections). " +
+      "Undoing twice answers `duplicate: true`; an unknown id is refused `handle_not_found`. " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      brandId: z.string().describe("Brand the contact was recorded on (from distribute_status)."),
+      handleId: z.string().describe("The recorded contact to take back."),
     }),
   },
   distribute_find_api: {
@@ -605,6 +641,12 @@ export async function handleToolCall(
 
     case "distribute_undo_people_merge":
       return handleUndoPeopleMerge(args);
+
+    case "distribute_add_person_contact":
+      return handleAddPersonContact(args);
+
+    case "distribute_undo_person_contact":
+      return handleUndoPersonContact(args);
 
     case "distribute_find_api":
       return handleFindApi(args);
@@ -1708,6 +1750,8 @@ const PEOPLE_REFUSAL_FIX: Record<string, string> = {
   same_person: "Both ids are already the same person: nothing to merge.",
   already_one_person: "These two are already shown as one person: nothing to merge.",
   different_brand: "The two people belong to different brands: only people of one brand can be merged.",
+  invalid_handle: "Not a usable phone or email: pass the phone in international form (+ and country code), or check the address.",
+  handle_not_found: "No such recorded contact in this brand: list them with distribute_list_people_corrections (`contacts`).",
 };
 
 /**
@@ -1757,6 +1801,7 @@ export function personForAssistant(p: Record<string, unknown>) {
     company: p.company ?? null,
     emails: p.emails ?? [],
     phones: p.phones ?? [],
+    preferredContact: p.preferredContact ?? null,
     foundIn: p.sources ?? [],
     lastActivityAt: p.lastActivityAt ?? null,
     state: p.state ?? null,
@@ -1842,17 +1887,20 @@ async function handleCorrectPerson(args: Record<string, unknown>) {
 async function handleListPeopleCorrections(args: Record<string, unknown>) {
   const brandId = idArg(args, "brandId", "brand_id");
   const target = { brandId, orgId: args.orgId };
-  const [corrections, merges] = await Promise.all([
+  const [corrections, merges, contacts] = await Promise.all([
     callApi<Record<string, unknown>>(withTarget("/v1/orgs/people/corrections", target)),
     callApi<Record<string, unknown>>(withTarget("/v1/orgs/people/merges", target)),
+    callApi<Record<string, unknown>>(withTarget("/v1/orgs/people/handles", target)),
   ]);
   if (corrections.error) failPeople(corrections);
   if (merges.error) failPeople(merges);
+  if (contacts.error) failPeople(contacts);
   const list = ((corrections.data as Record<string, unknown>)?.corrections ?? []) as Record<string, unknown>[];
   return {
     brandId,
     corrections: list.map(correctionForAssistant),
     merges: (merges.data as Record<string, unknown>)?.merges ?? [],
+    contacts: (contacts.data as Record<string, unknown>)?.handles ?? [],
   };
 }
 
@@ -1889,6 +1937,36 @@ async function handleUndoPeopleMerge(args: Record<string, unknown>) {
   return {
     ...data,
     next: data.duplicate ? "This merge was already undone: nothing changed." : "Undone. Each gets back their own person within about a minute.",
+  };
+}
+
+async function handleAddPersonContact(args: Record<string, unknown>) {
+  const brandId = idArg(args, "brandId", "brand_id");
+  const text = (k: string) => (typeof args[k] === "string" && (args[k] as string).trim() ? (args[k] as string).trim() : undefined);
+  const [personId, personKey, phone, email] = [text("personId") ?? text("person_id"), text("personKey"), text("phone"), text("email")];
+  if (!personId === !personKey) throw new Error("Pass exactly one of `personId` (from distribute_find_people) or `personKey` (`phone:+<digits>` / `email:<address>`).");
+  if (!phone === !email) throw new Error("Pass exactly one of `phone` (international, + and country code) or `email`.");
+  const body: Record<string, unknown> = { brandId, ...(personId ? { personId } : { personKey }), ...(phone ? { phone } : { email }) };
+  if (typeof args.preferred === "boolean") body.preferred = args.preferred;
+  if (text("channel")) body.channel = text("channel");
+  if (text("reason")) body.reason = text("reason");
+  body.evidence = { source: "mcp", ...(text("channel") ? { channel: text("channel") } : {}), ...(text("quote") ? { text: text("quote") } : {}) };
+  const data = await postPeople("/v1/orgs/people/handles", body, { brandId, orgId: args.orgId });
+  return {
+    ...data,
+    next: data.duplicate
+      ? "Already recorded for this person: nothing changed."
+      : "Recorded. The person shows it within about a minute. To take it back: distribute_undo_person_contact with this handleId.",
+  };
+}
+
+async function handleUndoPersonContact(args: Record<string, unknown>) {
+  const brandId = idArg(args, "brandId", "brand_id");
+  const handleId = idArg(args, "handleId", "handle_id");
+  const data = await postPeople(`/v1/orgs/people/handles/${encodeURIComponent(handleId)}/undo`, { brandId }, { brandId, orgId: args.orgId });
+  return {
+    ...data,
+    next: data.duplicate ? "This contact was already taken back: nothing changed." : "Undone. Within about a minute it no longer joins the person nor is where they are reached.",
   };
 }
 
