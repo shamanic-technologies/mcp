@@ -497,7 +497,7 @@ export const toolDefinitions = {
       "\"reach me on my other number\" or \"write to my new address\". Any channel. The new number or address joins the SAME person (one person, one history), " +
       "and by default (`preferred` true) it is where the brand reaches them from now on: the brand's WhatsApp messages to that person go to the new number. " +
       "`preferred: false` only records that it is theirs. Name the person with `personId` (distribute_find_people) or, when you only have the number or address they wrote from, " +
-      "`personKey` (`phone:+<digits>` or `email:<address>`). Pass exactly one of `phone` (international: + and country code) or `email`, and their own words in `quote`. " +
+      "`personKey` (`phone:+<digits>` or `email:<address>`); the old number itself is not needed, the person is enough. Pass exactly one of `phone` (international: + and country code) or `email`, and their own words in `quote`. " +
       "A phone is checked on WhatsApp at once (`whatsapp.status`: found, not_on_whatsapp, invalid_number, not_connected, failed). " +
       "The person shows it (`phones` / `emails`, `preferredContact`) within about a minute. Keep the returned `handleId`: \"that was wrong\" / \"undo that\" = distribute_undo_person_contact. " +
       "Refusals come back with their `reason`: `person_not_found`, `invalid_handle` (a number without country code, a malformed address). " +
