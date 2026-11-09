@@ -279,6 +279,9 @@ export const toolDefinitions = {
       "A campaign with no max budget spends nothing. Report each campaign by its name. " +
       "Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; " +
       "\"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead → Sales Cold Email Outreach → Positive reply → Paid client\"; the outcome names are the platform's own, read as served). " +
+      "A campaign can also run parts beside its path, each in `otherParts` with its own `runsWhen`, `path` and `description` " +
+      "(e.g. a path closed by the client's team, \"... Positive reply → Your Team Reply Closing → Paid client\", plus our AI answering every lead: " +
+      "runsWhen \"Each time: Lead event\", path \"Lead event → AI Follow-up Email → Paid client\"). Say every part when telling the client what a campaign does: never only its path. " +
       "Every trigger a campaign can start on, and which ones you may fire: distribute_list_triggers. " +
       "Before telling the client something is missing, read the running (`ongoing`) campaigns: one may already do what they ask " +
       "(e.g. send an email they wrote: a running campaign that runs \"Each time: Email Pushed Via API\"). " +
@@ -1051,11 +1054,20 @@ async function handleListCampaigns(args: Record<string, unknown>) {
 }
 
 /** features-service's copy of one campaign (`GET /v1/features/brands/:b/sales-funnel-campaigns?fields=copy`). */
+type CopyItem = { kind?: string; slug?: string; key?: string; name?: string; label?: string };
+/** A part the campaign runs OFF its path (features `otherParts[]`, CAMPAIGN-PATH-SHOWS-AI-ANSWER-1109), e.g. our AI answering every Lead event. */
+type CampaignOtherPart = {
+  trigger?: { slug?: string; name?: string } | null;
+  items?: CopyItem[] | null;
+  shortDescription?: string | null;
+  unavailableReason?: string | null;
+};
 type CampaignCopy = {
   id: string;
   type?: string | null;
   triggerLabel?: string | null;
-  path?: { items?: Array<{ kind?: string; slug?: string; key?: string; name?: string; label?: string }> } | null;
+  path?: { items?: CopyItem[] } | null;
+  otherParts?: CampaignOtherPart[];
 };
 type CopiesRead = { rows: Map<string, CampaignCopy> } | { error: string };
 
@@ -1086,7 +1098,7 @@ async function campaignCopies(listed: FunnelCampaign[], args: Record<string, unk
 
 /** "Each time: Email Pushed Via API" (reactive) or "On its own, within its caps (no trigger)" (proactive). */
 export function runsWhenOf(read: CopiesRead | undefined, campaignId: string) {
-  const unknown = (reason: string) => ({ runsWhen: null, trigger: null, path: null, runsWhenUnavailableReason: reason });
+  const unknown = (reason: string) => ({ runsWhen: null, trigger: null, path: null, runsWhenUnavailableReason: reason, otherParts: null });
   if (!read) return unknown("not read");
   if ("error" in read) return unknown(`could not be read: ${read.error}`);
   const copy = read.rows.get(campaignId);
@@ -1096,12 +1108,35 @@ export function runsWhenOf(read: CopiesRead | undefined, campaignId: string) {
   const trigger = t && t.slug && t.name ? { slug: t.slug, name: t.name } : null;
   const label = copy.triggerLabel ?? trigger?.name ?? null;
   const runsWhen = label ? `Each time: ${label}` : copy.type === "proactive" ? "On its own, within its caps (no trigger)" : null;
-  const path = items.length ? items.map((i) => (i.kind === "step" ? i.label : i.name) ?? "?").join(" → ") : null;
   return {
     runsWhen,
     trigger,
-    path,
+    path: pathText(items),
     ...(runsWhen ? {} : { runsWhenUnavailableReason: "no trigger and no type described for this campaign" }),
+    otherParts: (copy.otherParts ?? []).map(otherPartOf),
+  };
+}
+
+/** Served items joined by arrows, as the dashboard reads them; never rebuilt. */
+function pathText(items: CopyItem[]): string | null {
+  return items.length ? items.map((i) => (i.kind === "step" ? i.label : i.name) ?? "?").join(" → ") : null;
+}
+
+const OTHER_PART_UNAVAILABLE: Record<string, string> = {
+  pipe_not_in_catalogue: "the platform's catalogue does not describe what this part does",
+  trigger_not_in_catalogue: "the platform's catalogue does not describe what starts this part",
+};
+
+/** One part the campaign runs beside its path, in the producer's words: what starts it, its steps, its sentence. */
+function otherPartOf(p: CampaignOtherPart) {
+  const trigger = p.trigger?.slug && p.trigger.name ? { slug: p.trigger.slug, name: p.trigger.name } : null;
+  const reason = p.unavailableReason ? (OTHER_PART_UNAVAILABLE[p.unavailableReason] ?? p.unavailableReason) : null;
+  return {
+    runsWhen: trigger ? `Each time: ${trigger.name}` : "On its own, within its caps (no trigger)",
+    trigger,
+    path: pathText(p.items ?? []),
+    description: p.shortDescription ?? null,
+    ...(reason ? { unavailableReason: reason } : {}),
   };
 }
 

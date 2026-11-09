@@ -339,6 +339,61 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
     expect(mockCallApi.mock.calls.filter(([p]) => String(p).startsWith(copyPath))).toHaveLength(1);
   });
 
+  // CAMPAIGN-PATH-SHOWS-AI-ANSWER-1109: Living Vital's "Email Replies" read as closed by "Your Team" only while
+  // our AI also answered every lead on each Lead event.
+  it("lists every part a campaign runs beside its path, in the producer's words", async () => {
+    routeApi({
+      "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] },
+      [capsPath]: blissCaps,
+      [copyPath]: copies({
+        ...blissCopy,
+        otherParts: [
+          {
+            campaignId: "u-ai",
+            pipeId: "ai-email|lead_event_to_paid_client",
+            trigger: { slug: "lead_event", name: "Lead event" },
+            items: [
+              { kind: "trigger", slug: "lead_event", name: "Lead event" },
+              { kind: "channel", slug: "ai-email", name: "AI Follow-up Email", runByUs: true, pipeId: "ai-email|x" },
+              { kind: "step", key: "paid_client", label: "Paid client" },
+            ],
+            shortDescription: "Our AI emails leads the moment they act until they buy.",
+            unavailableReason: null,
+          },
+          { campaignId: "u-x", pipeId: "gone|x", trigger: null, items: null, shortDescription: null, unavailableReason: "pipe_not_in_catalogue" },
+        ],
+      }),
+    });
+
+    const out = (await handleToolCall("distribute_list_campaigns", { brandId: "b1" })) as { campaigns: Array<Record<string, any>> };
+
+    expect(out.campaigns[0]!.path).toBe("Start → Apollo Cold Filters → Lead found → Sales Cold Email Outreach → Positive reply");
+    expect(out.campaigns[0]!.otherParts).toEqual([
+      {
+        runsWhen: "Each time: Lead event",
+        trigger: { slug: "lead_event", name: "Lead event" },
+        path: "Lead event → AI Follow-up Email → Paid client",
+        description: "Our AI emails leads the moment they act until they buy.",
+      },
+      {
+        runsWhen: "On its own, within its caps (no trigger)",
+        trigger: null,
+        path: null,
+        description: null,
+        unavailableReason: "the platform's catalogue does not describe what this part does",
+      },
+    ]);
+    expect(JSON.stringify(out.campaigns[0]!.otherParts).toLowerCase()).not.toMatch(/funnel|pipe|\bleg/);
+  });
+
+  it("serves no other part when the platform names none", async () => {
+    routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: blissCaps, [copyPath]: copies(blissCopy) });
+
+    const out = (await handleToolCall("distribute_list_campaigns", { brandId: "b1" })) as { campaigns: Array<Record<string, any>> };
+
+    expect(out.campaigns[0]!.otherParts).toEqual([]);
+  });
+
   it("still lists the campaigns when what starts them cannot be read, and says why", async () => {
     mockCallApi.mockImplementation(async (path: string) => {
       if (path.startsWith(copyPath)) return { error: "Failed to get brand sales funnel campaigns", status: 502 };
