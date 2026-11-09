@@ -72,7 +72,7 @@ Curated tools, for the frequent jobs:
 | `distribute_list_brands` | The brands (companies, websites) of the organization a call targets |
 | `distribute_list_workflows` | Available workflows, including ones written in a named expert's style. Which one runs on a step is never picked: the platform ranks them like a multi-armed bandit |
 | `distribute_suggest_icp` | Read a brand's site and propose an ideal customer profile |
-| `distribute_list_campaigns` | The campaigns of one brand or organization, with what starts each (`runsWhen`, `trigger`), what it does (`path`), type and limits, filterable by status |
+| `distribute_list_campaigns` | The campaigns of one brand or organization, with what starts each (`runsWhen`, `trigger`), what it does (`path`, plus `otherParts`: each part it runs beside its path, e.g. our AI answering every Lead event), type and limits, filterable by status |
 | `distribute_campaign_stats` | One campaign's results, part by part, success first. Also takes the id of one step of a campaign and names that campaign |
 | `distribute_list_leads` | A brand's leads and where each stands: sent, delivered, clicked, replied, bounced, with dates |
 | `distribute_list_emails` | The emails we wrote for a brand: for each prospect, the first email and every follow-up, subject and body |
