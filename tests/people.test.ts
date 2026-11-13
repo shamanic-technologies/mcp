@@ -252,3 +252,54 @@ describe("every people tool says when to use it, in the user's words", () => {
     for (const t of tools) expect(d[t]).toBeDefined();
   });
 });
+
+describe("a client says something we made is not good", () => {
+  const LEAD = "bbbbbbbb-1111-4111-8111-000000000009";
+  const stored = { id: "r1", outcomeKey: "message_written", subjectService: "lead-service", subjectId: LEAD, kind: "reported", source: "mcp", note: "the price is not right", unitAt: "2026-11-10T09:00:00.000Z", orgId: "o1", userId: "u1", reportedAt: "2026-11-13T10:00:00.000Z" };
+
+  it("stores one report of the message, named as the ledger names it, said from the MCP", async () => {
+    mockCallApi.mockResolvedValue({ status: 201, data: stored });
+    const result = (await handleToolCall("distribute_report_not_good", {
+      brandId: BRAND,
+      outcomeKey: "message_written",
+      subjectService: "lead-service",
+      subjectId: LEAD,
+      kind: "reported",
+      note: " the price is not right ",
+      unitAt: "2026-11-10T09:00:00.000Z",
+    })) as Record<string, any>;
+    expect(mockCallApi).toHaveBeenCalledTimes(1);
+    expect(mockCallApi).toHaveBeenCalledWith(`/v1/features/unit-reports?brandId=${BRAND}`, {
+      method: "POST",
+      body: { outcomeKey: "message_written", subjectService: "lead-service", subjectId: LEAD, kind: "reported", source: "mcp", note: "the price is not right", unitAt: "2026-11-10T09:00:00.000Z" },
+    });
+    expect(result.report).toEqual(stored);
+    expect(result.next).toContain("Stored");
+  });
+
+  it("sends no note and no time when none is given, and names no organization for a single-org key", async () => {
+    mockCallApi.mockResolvedValue({ status: 201, data: { ...stored, kind: "edited", note: null } });
+    await handleToolCall("distribute_report_not_good", { outcomeKey: "offer_fields_drafted", subjectService: "brand-service", subjectId: "offer-1", kind: "edited" });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/features/unit-reports", {
+      method: "POST",
+      body: { outcomeKey: "offer_fields_drafted", subjectService: "brand-service", subjectId: "offer-1", kind: "edited", source: "mcp" },
+    });
+  });
+
+  it("hands back the producer's refusal whole", async () => {
+    mockCallApi.mockResolvedValue({ status: 400, error: "unitAt is an ISO time", errorBody: { error: "unitAt is an ISO time", reason: "unit_report_unrecognised" } });
+    const err = (await handleToolCall("distribute_report_not_good", { outcomeKey: "message_written", subjectService: "lead-service", subjectId: LEAD, kind: "reported", unitAt: "yesterday" }).catch((e: Error) => e)) as Error;
+    expect(JSON.parse(err.message)).toMatchObject({ status: 400, reason: "unit_report_unrecognised" });
+  });
+
+  it("says when to use it, has no positive kind and asks no confirmation", () => {
+    const d = toolDefinitions.distribute_report_not_good;
+    expect(d.description).toContain("the email you wrote to Jane was wrong, the price is not right");
+    expect(d.description).toContain("`message_written`");
+    expect(d.description).toContain("`leadId`");
+    expect(d.description).toContain("`sentAt`");
+    expect(d.description).toContain("nothing to confirm");
+    expect(d.schema.shape.kind.options).toEqual(["edited", "reported"]);
+    expect(Object.keys(d.schema.shape)).not.toContain("source");
+  });
+});

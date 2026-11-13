@@ -89,9 +89,12 @@ describe("the curated tools are read-only", () => {
     // and ONE helper for the user's own fixes on how their people were matched
     // (owner 2026-10-17, PEOPLE-CORRECTIONS-1017): a tag, a company, a domain
     // verdict, two people as one, each undoable;
-    // and another phone / email a person gave (CONTACT-REDIRECT-1101). None touches a campaign or money.
+    // another phone / email a person gave (CONTACT-REDIRECT-1101);
+    // and the client's "this is not good" on something we made (SCRIPT-VALUE-RATING-1113): one
+    // append-only report, nothing blocked, rewritten or re-sent. None touches a campaign or money.
     const posts = src.match(/method: "(POST|PUT|PATCH|DELETE)"/g) ?? [];
-    expect(posts).toEqual(['method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"']);
+    expect(posts).toEqual(['method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"']);
+    expect(src).toContain("/v1/features/unit-reports");
     for (const path of ["/v1/orgs/people/corrections", "/v1/orgs/people/merges", "/v1/orgs/people/handles"]) expect(src).toContain(path);
     expect(src).toContain("/icp/suggest");
     expect(src).toContain('"/v1/agent-signups/start"');

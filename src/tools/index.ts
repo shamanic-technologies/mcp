@@ -166,6 +166,9 @@ export const PEOPLE_TAG_MEANING: Record<(typeof PEOPLE_TAGS)[number], string> = 
 const PEOPLE_TAG_WORDS = PEOPLE_TAGS.map((t) => `\`${t}\` (${PEOPLE_TAG_MEANING[t]})`).join(", ");
 
 // Tool definitions with Zod schemas
+/** The two things a client's report says (features-service `POST /orgs/unit-reports`). There is no positive kind. */
+export const UNIT_REPORT_KINDS = ["edited", "reported"] as const;
+
 export const toolDefinitions = {
   distribute_status: {
     description:
@@ -530,6 +533,31 @@ export const toolDefinitions = {
       handleId: z.string().describe("The recorded contact to take back."),
     }),
   },
+  distribute_report_not_good: {
+    description:
+      "Tell us that something we made for the client is NOT GOOD. Use it when the client says something we wrote or made for them is wrong " +
+      "(\"the email you wrote to Jane was wrong, the price is not right\", \"this message is off\", \"I would never say that\"): `kind: reported`; " +
+      "or when the client changed something we wrote for them (they rewrote an offer field we drafted): `kind: edited`. " +
+      "Call it as soon as the client says it, on your own judgment, with their words in `note`: nothing to confirm, and nothing is blocked, rewritten, re-sent or undone. " +
+      "The report only makes us less likely to pick, next time, the script that made it. There is no positive report: never call it to say something is good; silence says nothing. " +
+      "One call per thing reported. Name the thing as our ledger names it: " +
+      "(1) a message we wrote one person (an email of distribute_list_emails or distribute_get_lead `emailsWritten`, a message we sent in a conversation): " +
+      "`outcomeKey` `message_written`, `subjectService` `lead-service`, `subjectId` = the person's `leadId` (the field named `leadId`, never a lead row's `id`), " +
+      "and `unitAt` = that message's `sentAt`, so we know WHICH of that person's messages (omit it for a message not sent yet: the latest one written is taken). " +
+      "(2) the fields of an offer we drafted: `offer_fields_drafted`, `brand-service`, the offer's id. " +
+      "(3) anything else we made: its outcome key, the service holding its subject and the subject's id, as the tool that returned it names them. " +
+      "Find the thing first (distribute_list_emails, distribute_get_lead) when the client only names a person. Returns the stored report. " +
+      TARGET_HINT,
+    schema: z.object({
+      ...targetShape,
+      outcomeKey: z.string().describe("What was made, as the ledger names it: `message_written` for a message we wrote one person, `offer_fields_drafted` for an offer's drafted fields."),
+      subjectService: z.string().describe("The service holding its subject: `lead-service` for a message (its subject is the person), `brand-service` for an offer's fields."),
+      subjectId: z.string().describe("The subject's id: the person's `leadId` for a message, the offer's id for an offer's fields."),
+      kind: z.enum(UNIT_REPORT_KINDS).describe("`reported` = the client says it is not good (e.g. a message already sent); `edited` = the client changed what we wrote."),
+      note: z.string().optional().describe("What the client said, in their own words (\"the price is not right\")."),
+      unitAt: z.string().optional().describe("When the reported thing was made, ISO time: a message's `sentAt`. Tells which one when a subject holds several (one person, many messages)."),
+    }),
+  },
   distribute_find_api: {
     description:
       "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API " +
@@ -650,6 +678,9 @@ export async function handleToolCall(
 
     case "distribute_undo_person_contact":
       return handleUndoPersonContact(args);
+
+    case "distribute_report_not_good":
+      return handleReportNotGood(args);
 
     case "distribute_find_api":
       return handleFindApi(args);
@@ -1992,6 +2023,32 @@ async function handleAddPersonContact(args: Record<string, unknown>) {
     next: data.duplicate
       ? "Already recorded for this person: nothing changed."
       : "Recorded. The person shows it within about a minute. To take it back: distribute_undo_person_contact with this handleId.",
+  };
+}
+
+/**
+ * A client says something we made is not good (SCRIPT-VALUE-RATING-1113, owner 2026-11-13: « par
+ * API / MCP directement, rajouter un endpoint exposé sans passer par Sophie »). One report of one
+ * Unit through the gateway's `POST /v1/features/unit-reports` (features-service owns the body and
+ * its refusals; the gateway forwards both whole). The agent judges: no confirmation, no check of
+ * ours on what it reports. `source` says it was said here.
+ */
+async function handleReportNotGood(args: Record<string, unknown>) {
+  const text = (k: string) => (typeof args[k] === "string" && (args[k] as string).trim() ? (args[k] as string).trim() : undefined);
+  const body: Record<string, unknown> = {
+    outcomeKey: text("outcomeKey"),
+    subjectService: text("subjectService"),
+    subjectId: text("subjectId"),
+    kind: args.kind,
+    source: "mcp",
+  };
+  if (text("note")) body.note = text("note");
+  if (text("unitAt")) body.unitAt = text("unitAt");
+  const result = await callApi<Record<string, unknown>>(withTarget("/v1/features/unit-reports", args), { method: "POST", body });
+  if (result.error) failPeople(result);
+  return {
+    report: result.data,
+    next: "Stored. Nothing was blocked, rewritten or re-sent: we are now less likely to pick the script that made it. Tell the client it is noted.",
   };
 }
 
