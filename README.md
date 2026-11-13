@@ -51,7 +51,7 @@ Call `distribute_status` first — it confirms the key reached the gateway, list
 
 ## Tools
 
-There are **28 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
+There are **29 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
 
 **Same scope as the API.** Whatever your key can do on `https://api.distribute.you/v1/*`, it can do from here, and nothing more: the API decides on every call what the key may read or write, and this server never widens or narrows it. Our own internals (prompt text, models, token counts, generation costs, the internal service registry) never come back through it.
 
@@ -93,6 +93,12 @@ How we see a brand's people, and the user's fixes (each one only when the user a
 | `distribute_add_person_contact` | Record another phone or email a person gave ("don't message me on this number, use +33600000002 on WhatsApp"): it joins the same person and, by default, is where the brand reaches them from now on. Any channel |
 | `distribute_undo_person_contact` | Take it back ("that was wrong") |
 
+The client says something we made is not good:
+
+| Tool | What it does |
+|---|---|
+| `distribute_report_not_good` | Report one thing we made for the client: `reported` ("the email you wrote to Jane was wrong, the price is not right") or `edited` (the client changed what we wrote). The thing is named as our ledger names it: a message = `message_written` / `lead-service` / the person's `leadId`, with `unitAt` = the message's `sentAt`; an offer's drafted fields = `offer_fields_drafted` / `brand-service` / the offer id. We become less likely to pick the script that made it; nothing is blocked, rewritten or re-sent. No positive report, no confirmation step |
+
 The method, before acting on a client's ask:
 
 | Tool | What it does |
@@ -119,6 +125,8 @@ The whole API, by intent:
 **What a campaign is.** A campaign is what the customer launched: one sales funnel run for one offer of a brand, started or paused as one, with its caps: a max budget and/or a max volume per period ("Max $10/day" when it reaches out on its own, "Up to $20/week" when it acts on what happens). `distribute_list_campaigns` lists those, and only those. Inside, a campaign runs one part per channel step; a part is never listed, counted or named as a campaign. Each campaign says what starts it, `runsWhen` ("Each time: Email Pushed Via API" plus its `trigger` {slug, name} for a reactive one, "On its own, within its caps (no trigger)" for a proactive one), and what it does, `path` (its steps in order), read from the dashboard's own Campaigns table copy (`GET /v1/features/brands/{brandId}/sales-funnel-campaigns?fields=copy`, one call per brand, no money computed). An agent reads the running campaigns before calling anything missing: one may already do what the client asks. If that read is refused, the campaigns still come back, each with `runsWhenUnavailableReason`.
 
 **How stats read.** `distribute_campaign_stats` takes a campaign id from `distribute_list_campaigns` as `campaignId` (the older `campaign_id` still works) (an id seen elsewhere, such as in trigger events or offer stats, is one step of a campaign: it is accepted too, and the answer's `note` names the campaign it belongs to) and returns the campaign's name and status, a one-line `headline`, and `results`: one entry per part, named by the outcome it brings in (`outcome`, such as Positive reply or Lead; `bringsIn` is the older name of the same value) and the channel doing it (`channel`). Each entry leads with its own `headline` and a `summary`: meetings booked, positive replies, money earned and ROI (null for now: the API does not serve them, and `summary.notServed` says so), delivery rate (the ratio the API serves, shown as a percent; null when the API serves null), then volume and cost. The gateway's own figures follow unchanged, and bounces, unsubscribes and negative replies close the response in `failureDetails`. Zeros are shown as zeros. An assistant reading the response should report it in that order.
+
+**Reporting something as not good.** `distribute_report_not_good` wraps `POST /v1/features/unit-reports`, the same door the dashboard's edits and its "Report" on a sent message use. The server sets `source: "mcp"`; the API records the organization and the user of the key. A message's subject is the PERSON (`leadId`), and one person holds several messages over time, so `unitAt` (the message's `sentAt`, both returned by `distribute_list_emails` and `distribute_get_lead`) says which one; without it the person's latest message at the time of the report is taken.
 
 **The curated tools read; writes go through `distribute_call_api`.** No curated tool creates or stops a campaign: the customer dashboard has exactly one campaign write, at the end of onboarding, where billing is funded around it, and a one-click tool for it would land a campaign with no money and no audience. Any write the API allows your key (a campaign's caps, an offer, a campaign) is still reachable through `distribute_call_api`, exactly as through the API. An assistant is told to say what it is about to change before it calls a write.
 

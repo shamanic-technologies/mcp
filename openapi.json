@@ -858,6 +858,63 @@
           "$schema": "http://json-schema.org/draft-07/schema#"
         }
       },
+      "distribute_report_not_good": {
+        "description": "Tell us that something we made for the client is NOT GOOD. Use it when the client says something we wrote or made for them is wrong (\"the email you wrote to Jane was wrong, the price is not right\", \"this message is off\", \"I would never say that\"): `kind: reported`; or when the client changed something we wrote for them (they rewrote an offer field we drafted): `kind: edited`. Call it as soon as the client says it, on your own judgment, with their words in `note`: nothing to confirm, and nothing is blocked, rewritten, re-sent or undone. The report only makes us less likely to pick, next time, the script that made it. There is no positive report: never call it to say something is good; silence says nothing. One call per thing reported; each call stores one more report (append-only: do not repeat it for the same remark). A report corrects nothing: when a FACT is wrong (a price, a claim), also read the method (distribute_read_skill `offers`): it says how the client gets what we write corrected. Name the thing as our ledger names it: (1) a message we wrote one person (an email of distribute_list_emails or distribute_get_lead `emailsWritten`, a message we sent in a conversation): `outcomeKey` `message_written`, `subjectService` `lead-service`, `subjectId` = the person's `leadId` (the field named `leadId`, never a lead row's `id`), and `unitAt` = the `sentAt` of the one message meant, so we know WHICH of that person's messages: each step of an email's `sequence` (first email, each follow-up) is its own message with its own `sentAt`; pass the step the client points at (omit `unitAt` for a message not sent yet: the latest one written for that person is taken). (2) the fields of an offer we drafted: `offer_fields_drafted`, `brand-service`, the offer's id. (3) anything else we made: its outcome key, the service holding its subject and the subject's id, as the tool that returned it names them. Find the thing first (distribute_list_emails, distribute_get_lead) when the client only names a person. Returns the stored report. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_report_not_good",
+          "definitions": {
+            "distribute_report_not_good": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                },
+                "outcomeKey": {
+                  "type": "string",
+                  "description": "What was made, as the ledger names it: `message_written` for a message we wrote one person, `offer_fields_drafted` for an offer's drafted fields."
+                },
+                "subjectService": {
+                  "type": "string",
+                  "description": "The service holding its subject: `lead-service` for a message (its subject is the person), `brand-service` for an offer's fields."
+                },
+                "subjectId": {
+                  "type": "string",
+                  "description": "The subject's id: the person's `leadId` for a message, the offer's id for an offer's fields."
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "edited",
+                    "reported"
+                  ],
+                  "description": "`reported` = the client says it is not good (e.g. a message already sent); `edited` = the client changed what we wrote."
+                },
+                "note": {
+                  "description": "What the client said, in their own words (\"the price is not right\").",
+                  "type": "string"
+                },
+                "unitAt": {
+                  "description": "When the reported thing was made, ISO time: a message's `sentAt`. Tells which one when a subject holds several (one person, many messages).",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "outcomeKey",
+                "subjectService",
+                "subjectId",
+                "kind"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
       "distribute_find_api": {
         "description": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has. To list the triggers (and which ones a call may fire), use distribute_list_triggers.",
         "inputSchema": {
@@ -2776,6 +2833,98 @@
                 "required": [
                   "brandId",
                   "handleId"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_report_not_good": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Tell us that something we made for the client is NOT GOOD. Use it when the client says something we wrote or made for them is wrong (\"the email you wrote to Jane was wrong, the price is not right\", \"this message is off\", \"I would never say that\"): `kind: reported`; or when the client changed something we wrote for them (they rewrote an offer field we drafted): `kind: edited`. Call it as soon as the client says it, on your own judgment, with their words in `note`: nothing to confirm, and nothing is blocked, rewritten, re-sent or undone. The report only makes us less likely to pick, next time, the script that made it. There is no positive report: never call it to say something is good; silence says nothing. One call per thing reported; each call stores one more report (append-only: do not repeat it for the same remark). A report corrects nothing: when a FACT is wrong (a price, a claim), also read the method (distribute_read_skill `offers`): it says how the client gets what we write corrected. Name the thing as our ledger names it: (1) a message we wrote one person (an email of distribute_list_emails or distribute_get_lead `emailsWritten`, a message we sent in a conversation): `outcomeKey` `message_written`, `subjectService` `lead-service`, `subjectId` = the person's `leadId` (the field named `leadId`, never a lead row's `id`), and `unitAt` = the `sentAt` of the one message meant, so we know WHICH of that person's messages: each step of an email's `sequence` (first email, each follow-up) is its own message with its own `sentAt`; pass the step the client points at (omit `unitAt` for a message not sent yet: the latest one written for that person is taken). (2) the fields of an offer we drafted: `offer_fields_drafted`, `brand-service`, the offer's id. (3) anything else we made: its outcome key, the service holding its subject and the subject's id, as the tool that returned it names them. Find the thing first (distribute_list_emails, distribute_get_lead) when the client only names a person. Returns the stored report. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_report_not_good. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_report_not_good\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  },
+                  "outcomeKey": {
+                    "type": "string",
+                    "description": "What was made, as the ledger names it: `message_written` for a message we wrote one person, `offer_fields_drafted` for an offer's drafted fields."
+                  },
+                  "subjectService": {
+                    "type": "string",
+                    "description": "The service holding its subject: `lead-service` for a message (its subject is the person), `brand-service` for an offer's fields."
+                  },
+                  "subjectId": {
+                    "type": "string",
+                    "description": "The subject's id: the person's `leadId` for a message, the offer's id for an offer's fields."
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "edited",
+                      "reported"
+                    ],
+                    "description": "`reported` = the client says it is not good (e.g. a message already sent); `edited` = the client changed what we wrote."
+                  },
+                  "note": {
+                    "description": "What the client said, in their own words (\"the price is not right\").",
+                    "type": "string"
+                  },
+                  "unitAt": {
+                    "description": "When the reported thing was made, ISO time: a message's `sentAt`. Tells which one when a subject holds several (one person, many messages).",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "outcomeKey",
+                  "subjectService",
+                  "subjectId",
+                  "kind"
                 ],
                 "additionalProperties": false
               }
