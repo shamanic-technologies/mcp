@@ -540,10 +540,13 @@ export const toolDefinitions = {
       "or when the client changed something we wrote for them (they rewrote an offer field we drafted): `kind: edited`. " +
       "Call it as soon as the client says it, on your own judgment, with their words in `note`: nothing to confirm, and nothing is blocked, rewritten, re-sent or undone. " +
       "The report only makes us less likely to pick, next time, the script that made it. There is no positive report: never call it to say something is good; silence says nothing. " +
-      "One call per thing reported. Name the thing as our ledger names it: " +
+      "One call per thing reported; each call stores one more report (append-only: do not repeat it for the same remark). " +
+      "A report corrects nothing: when a FACT is wrong (a price, a claim), also read the method (distribute_read_skill `offers`): it says how the client gets what we write corrected. " +
+      "Name the thing as our ledger names it: " +
       "(1) a message we wrote one person (an email of distribute_list_emails or distribute_get_lead `emailsWritten`, a message we sent in a conversation): " +
       "`outcomeKey` `message_written`, `subjectService` `lead-service`, `subjectId` = the person's `leadId` (the field named `leadId`, never a lead row's `id`), " +
-      "and `unitAt` = that message's `sentAt`, so we know WHICH of that person's messages (omit it for a message not sent yet: the latest one written is taken). " +
+      "and `unitAt` = the `sentAt` of the one message meant, so we know WHICH of that person's messages: each step of an email's `sequence` (first email, each follow-up) is its own message with its own `sentAt`; " +
+      "pass the step the client points at (omit `unitAt` for a message not sent yet: the latest one written for that person is taken). " +
       "(2) the fields of an offer we drafted: `offer_fields_drafted`, `brand-service`, the offer's id. " +
       "(3) anything else we made: its outcome key, the service holding its subject and the subject's id, as the tool that returned it names them. " +
       "Find the thing first (distribute_list_emails, distribute_get_lead) when the client only names a person. Returns the stored report. " +
@@ -2048,7 +2051,9 @@ async function handleReportNotGood(args: Record<string, unknown>) {
   if (result.error) failPeople(result);
   return {
     report: result.data,
-    next: "Stored. Nothing was blocked, rewritten or re-sent: we are now less likely to pick the script that made it. Tell the client it is noted.",
+    next:
+      "Stored. Nothing was blocked, rewritten or re-sent: we are now less likely to pick the script that made it. Tell the client it is noted. " +
+      "If a fact was wrong (a price, a claim), distribute_read_skill `offers` says how the client gets what we write corrected.",
   };
 }
 

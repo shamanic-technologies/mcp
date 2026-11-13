@@ -299,6 +299,9 @@ describe("a client says something we made is not good", () => {
     expect(d.description).toContain("`leadId`");
     expect(d.description).toContain("`sentAt`");
     expect(d.description).toContain("nothing to confirm");
+    // Role-play 2026-11-13: one email row holds several messages (steps), and a wrong price is the offer's.
+    expect(d.description).toContain("each step of an email's `sequence`");
+    expect(d.description).toContain("A report corrects nothing");
     expect(d.schema.shape.kind.options).toEqual(["edited", "reported"]);
     expect(Object.keys(d.schema.shape)).not.toContain("source");
   });
