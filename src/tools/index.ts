@@ -301,6 +301,8 @@ export const toolDefinitions = {
       "An id seen elsewhere (trigger events, offer stats, a lead's `campaignId`) is one step of a campaign: pass it too, the answer names its campaign in `note`. " +
       "Report the campaign by its name and never call an entry of `results` a campaign. " +
       "Report meetings, positive replies and delivery rate first, then volume and cost; " +
+      "`summary.costUsd` is what the client PAYS (after any discount): report it as the spend. " +
+      "`summary.costBeforeDiscountUsd` is the price before the client's discount, the same figure when there is none: mention it only to explain the discount, never as the spend. " +
       "bounces and other failures last. Each entry is ordered that way: `headline`, then `summary`, then the raw figures, then `failureDetails`. " +
       "Show zeros plainly (0 meetings is still reported). " +
       TARGET_HINT,
@@ -1288,6 +1290,7 @@ type Summary = {
   leadsContacted: number | null;
   emailsSent: number | null;
   costUsd: number | null;
+  costBeforeDiscountUsd: number | null;
   notServed: string[];
   unavailable: string[];
 };
@@ -1318,10 +1321,15 @@ function successFirstSummary(raw: Record<string, unknown>, served: Record<string
     sent: num(served.sent),
     leadsContacted: num(raw.leadsContacted),
     emailsSent: num(emails.sent),
-    // The gateway's own headline cost (cents string, campaign-service's spend for the part).
-    // `totalCostUsd` is only set when the email writer reports one, so reading it left the cost
-    // out of nearly every headline while `totalCostInUsdCents` was served beside it.
+    // The gateway's own headline cost (cents string): runs-service's spend for the part, what
+    // the org PAYS after its usage discount. `totalCostUsd` is only set when the email writer
+    // reports one, so reading it left the cost out of nearly every headline.
     costUsd: usd(typeof served.costInUsdCents === "string" ? served.costInUsdCents : null),
+    // The same spend priced before the org's discount, served beside it by the gateway (equal
+    // when the org has none). Read as served, never derived here.
+    costBeforeDiscountUsd: usd(
+      typeof served.costBeforeDiscountInUsdCents === "string" ? served.costBeforeDiscountInUsdCents : null,
+    ),
     notServed: ["moneyEarnedUsd", "roi"],
     unavailable: Array.isArray(served.unavailable) ? (served.unavailable as string[]) : [],
   };
@@ -1335,7 +1343,12 @@ function headlineOf(s: Summary): string {
       : s.sent === 0
         ? "no delivery rate yet (nothing sent)"
         : "delivery rate unknown";
-  const cost = s.costUsd === null ? "" : `, $${s.costUsd.toFixed(2)} spent`;
+  // What the org paid leads; the price before its discount follows only when it differs.
+  const beforeDiscount =
+    s.costUsd !== null && s.costBeforeDiscountUsd !== null && s.costBeforeDiscountUsd.toFixed(2) !== s.costUsd.toFixed(2)
+      ? ` ($${s.costBeforeDiscountUsd.toFixed(2)} before your discount)`
+      : "";
+  const cost = s.costUsd === null ? "" : `, $${s.costUsd.toFixed(2)} spent${beforeDiscount}`;
   return (
     `${count(s.meetingsBooked)} meetings booked, ${count(s.positiveReplies)} positive replies, ${delivery}. ` +
     `${count(s.leadsContacted)} leads contacted, ${count(s.emailsSent)} emails sent${cost}.`

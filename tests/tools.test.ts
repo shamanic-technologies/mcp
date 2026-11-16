@@ -433,6 +433,7 @@ describe("distribute_campaign_stats reads success first", () => {
       delivered: 518,
       sent: 531,
       costInUsdCents: "1230",
+      costBeforeDiscountInUsdCents: "1230",
       notServed: ["moneyEarnedInUsdCents", "roi"],
       unavailable: [] as string[],
     },
@@ -709,6 +710,38 @@ describe("distribute_campaign_stats reads success first", () => {
 
     expect(out.summary.costUsd).toBe(62.97);
     expect(out.headline).toContain("$62.97 spent");
+  });
+
+  it("leads with what a discounted org paid and names the price before its discount", async () => {
+    // Prod part b93006ef-829e-43fc-908a-8077dc028bd9, org on a 50% usage discount.
+    const discounted = stats();
+    discounted.headline = { ...discounted.headline, costInUsdCents: "12241", costBeforeDiscountInUsdCents: "24084" };
+    routeStats(discounted);
+
+    const out = await part();
+
+    expect(out.summary.costUsd).toBe(122.41);
+    expect(out.summary.costBeforeDiscountUsd).toBe(240.84);
+    expect(out.headline).toBe(
+      "1 meetings booked, 3 positive replies, 97.6% delivered (518 of 531). 531 leads contacted, 900 emails sent, $122.41 spent ($240.84 before your discount).",
+    );
+  });
+
+  it("an org with no discount reads one spend figure", async () => {
+    routeStats(stats());
+
+    const out = await part();
+
+    expect(out.summary.costUsd).toBe(12.3);
+    expect(out.summary.costBeforeDiscountUsd).toBe(12.3);
+    expect(out.headline).toContain("900 emails sent, $12.30 spent.");
+    expect(out.headline).not.toContain("before your discount");
+  });
+
+  it("tells the model which cost the client pays", () => {
+    const d = toolDefinitions.distribute_campaign_stats.description;
+    expect(d).toContain("`summary.costUsd` is what the client PAYS");
+    expect(d).toContain("`summary.costBeforeDiscountUsd` is the price before the client's discount");
   });
 
   it("tells the model to report success first", () => {
