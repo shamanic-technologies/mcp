@@ -85,12 +85,12 @@ describe("prepay", () => {
     mockCallApi.mockResolvedValue({ data: { url: "https://checkout.stripe.com/x", payment_mode: "prepaid" }, status: 200 });
     const result = (await handleToolCall("distribute_prepay", {
       topup_amount_cents: 1000,
-      auto_topup_amount_cents: 1500,
+      auto_topup_amount_cents: 1000,
       auto_topup_threshold_cents: 500,
     })) as Record<string, unknown>;
     expect(mockCallApi).toHaveBeenCalledWith("/v1/billing/accounts/prepaid_checkout", {
       method: "POST",
-      body: { topup_amount_cents: 1000, auto_topup_amount_cents: 1500, auto_topup_threshold_cents: 500 },
+      body: { topup_amount_cents: 1000, auto_topup_amount_cents: 1000, auto_topup_threshold_cents: 500 },
     });
     expect(result.url).toBe("https://checkout.stripe.com/x");
   });
@@ -102,7 +102,7 @@ describe("prepay", () => {
       status: 400,
     });
     const err = await thrown(
-      handleToolCall("distribute_prepay", { topup_amount_cents: 500, auto_topup_amount_cents: 1500, auto_topup_threshold_cents: 500 }),
+      handleToolCall("distribute_prepay", { topup_amount_cents: 500, auto_topup_amount_cents: 1000, auto_topup_threshold_cents: 500 }),
     );
     expect(err.error).toBe("amount_below_minimum");
     expect(err.field).toBe("topup_amount_cents");
@@ -115,9 +115,34 @@ describe("prepay", () => {
     expect(result).toEqual({ state: "awaiting_payment", balance_cents: "0" });
   });
 
-  it("the minimums the tools state are the owner's: $10 / $15 / $5", () => {
-    expect(PREPAY_MINIMUMS).toEqual({ topup_amount_cents: 1000, auto_topup_amount_cents: 1500, auto_topup_threshold_cents: 500 });
+  it("the minimums the tools state are the owner's: $10 / $10 / $5", () => {
+    expect(PREPAY_MINIMUMS).toEqual({ topup_amount_cents: 1000, auto_topup_amount_cents: 1000, auto_topup_threshold_cents: 500 });
     expect(toolDefinitions.distribute_prepay.description).toContain("No human needed");
+    expect(toolDefinitions.distribute_prepay.description).toContain("auto_topup_amount_cents 1000 ($10");
+    expect(toolDefinitions.distribute_prepay.description).not.toContain("$15");
+  });
+
+  // AGENT-RELOAD-10-1117, owner 2026-11-11: « +10 dès qu'on arrive sous $5 ».
+  it("a reload left out defaults to 1000 cents ($10)", async () => {
+    mockCallApi.mockResolvedValue({ data: { url: "https://checkout.stripe.com/d" }, status: 200 });
+    await handleToolCall("distribute_prepay", { topup_amount_cents: 1000, auto_topup_threshold_cents: 500 });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/billing/accounts/prepaid_checkout", {
+      method: "POST",
+      body: { topup_amount_cents: 1000, auto_topup_amount_cents: 1000, auto_topup_threshold_cents: 500 },
+    });
+  });
+
+  it("a 999-cent reload comes back refused, naming the $10 minimum", async () => {
+    mockCallApi.mockResolvedValue({
+      error: "amount_below_minimum",
+      errorBody: { error: "amount_below_minimum", code: "amount_below_minimum", field: "auto_topup_amount_cents", minimum_cents: 1000, message: "auto_topup_amount_cents must be at least 1000 ($10.00); got 999 ($9.99)." },
+      status: 400,
+    });
+    const err = await thrown(
+      handleToolCall("distribute_prepay", { topup_amount_cents: 1000, auto_topup_amount_cents: 999, auto_topup_threshold_cents: 500 }),
+    );
+    expect(err.field).toBe("auto_topup_amount_cents");
+    expect(err.minimum_cents).toBe(1000);
   });
 });
 
