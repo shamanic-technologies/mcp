@@ -92,13 +92,17 @@ export function paymentRequired(result: { error?: string; errorBody?: ApiErrorBo
 }
 
 /**
- * The gateway's prepaid minimums (api-service `src/lib/agent-prepay.ts`, owner
- * 2026-10-12: $10 prepay, $15 reload, $5 threshold). Named here only to tell an
- * agent what to send; the gateway is what refuses less (`amount_below_minimum`).
+ * The gateway's prepaid minimums (api-service `src/lib/agent-prepay.ts`):
+ * $10 prepay, $10 reload, $5 threshold. Owner 2026-11-11 replaced the old $15
+ * reload: « +10 dès qu'on arrive sous $5 » (each reload adds at least $10,
+ * whatever the threshold; same rule as the dashboard checkout). Example: pay
+ * $10, campaigns spend down to $4.90, the card is charged $10, balance $14.90.
+ * Named here only to tell an agent what to send (and the reload default); the
+ * gateway is what refuses less (`amount_below_minimum`).
  */
 export const PREPAY_MINIMUMS = {
   topup_amount_cents: 1000,
-  auto_topup_amount_cents: 1500,
+  auto_topup_amount_cents: 1000,
   auto_topup_threshold_cents: 500,
 } as const;
 
@@ -241,7 +245,8 @@ export const toolDefinitions = {
       "Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). " +
       "Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically: " +
       "when the balance falls under `auto_topup_threshold_cents`, it adds `auto_topup_amount_cents`. Auto top-up is required. " +
-      "Amounts in cents, minimums: topup_amount_cents 1000 ($10), auto_topup_amount_cents 1500 ($15), auto_topup_threshold_cents 500 ($5). " +
+      "Amounts in cents, minimums: topup_amount_cents 1000 ($10), auto_topup_amount_cents 1000 ($10, the default), auto_topup_threshold_cents 500 ($5). " +
+      "Example: pay $10, campaigns spend down to $4.90, the card is charged $10, balance $14.90. " +
       "Less is refused with `amount_below_minimum`, naming the field. " +
       "Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog " +
       "(an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. " +
@@ -249,7 +254,7 @@ export const toolDefinitions = {
       TARGET_HINT,
     schema: z.object({
       topup_amount_cents: z.number().int().describe("First prepayment, in cents. At least 1000 ($10)."),
-      auto_topup_amount_cents: z.number().int().describe("Amount added at each automatic reload, in cents. At least 1500 ($15)."),
+      auto_topup_amount_cents: z.number().int().optional().describe("Amount added at each automatic reload, in cents. At least 1000 ($10), whatever the threshold. Default 1000 ($10)."),
       auto_topup_threshold_cents: z.number().int().describe("Balance under which the card reloads, in cents. At least 500 ($5)."),
       success_url: z.string().optional().describe("Page shown after paying (default https://distribute.you/?prepaid=paid)."),
       cancel_url: z.string().optional().describe("Page shown if payment is cancelled (default https://distribute.you/?prepaid=cancelled)."),
@@ -1797,7 +1802,8 @@ export function mintedKey(tool: string, result: unknown): string | null {
 async function handlePrepay(args: Record<string, unknown>) {
   const body: Record<string, unknown> = {
     topup_amount_cents: args.topup_amount_cents,
-    auto_topup_amount_cents: args.auto_topup_amount_cents,
+    auto_topup_amount_cents:
+      args.auto_topup_amount_cents === undefined ? PREPAY_MINIMUMS.auto_topup_amount_cents : args.auto_topup_amount_cents,
     auto_topup_threshold_cents: args.auto_topup_threshold_cents,
   };
   if (typeof args.success_url === "string") body.success_url = args.success_url;
