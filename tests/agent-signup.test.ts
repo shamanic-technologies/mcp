@@ -8,7 +8,7 @@ vi.mock("../src/lib/api-client.js", () => ({
   isConfigured: vi.fn(() => true),
 }));
 
-import { handleToolCall, toolDefinitions, mintedKey, PREPAY_MINIMUMS } from "../src/tools/index.js";
+import { handleToolCall, toolDefinitions, mintedKey } from "../src/tools/index.js";
 import { callApi, getConfigStatus } from "../src/lib/api-client.js";
 
 const mockCallApi = vi.mocked(callApi);
@@ -81,31 +81,41 @@ describe("agent signup, with no key", () => {
 });
 
 describe("prepay", () => {
-  it("posts the three amounts to the prepaid checkout and returns the payment url", async () => {
+  // RELOAD-RULE-ONE-HOME-1118: billing-service is the ONE home of the reload rule. The
+  // figures below are whatever billing answers in the mock, never a copy held here.
+  const BILLING_MIN = 777;
+
+  it("posts the first prepayment and the reload amount, never a threshold", async () => {
     mockCallApi.mockResolvedValue({ data: { url: "https://checkout.stripe.com/x", payment_mode: "prepaid" }, status: 200 });
     const result = (await handleToolCall("distribute_prepay", {
-      topup_amount_cents: 1000,
-      auto_topup_amount_cents: 1000,
+      topup_amount_cents: 2000,
+      auto_topup_amount_cents: 1500,
       auto_topup_threshold_cents: 500,
     })) as Record<string, unknown>;
     expect(mockCallApi).toHaveBeenCalledWith("/v1/billing/accounts/prepaid_checkout", {
       method: "POST",
-      body: { topup_amount_cents: 1000, auto_topup_amount_cents: 1000, auto_topup_threshold_cents: 500 },
+      body: { topup_amount_cents: 2000, auto_topup_amount_cents: 1500 },
     });
     expect(result.url).toBe("https://checkout.stripe.com/x");
   });
 
-  it("a below-minimum amount comes back as amount_below_minimum, naming the field", async () => {
+  it("a reload left out is left out: billing applies its own default", async () => {
+    mockCallApi.mockResolvedValue({ data: { url: "https://checkout.stripe.com/d" }, status: 200 });
+    await handleToolCall("distribute_prepay", { topup_amount_cents: 2000 });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/billing/accounts/prepaid_checkout", {
+      method: "POST",
+      body: { topup_amount_cents: 2000 },
+    });
+  });
+
+  it("billing's below-minimum refusal comes back whole", async () => {
     mockCallApi.mockResolvedValue({
-      error: "amount_below_minimum",
-      errorBody: { error: "amount_below_minimum", code: "amount_below_minimum", field: "topup_amount_cents", minimum_cents: 1000, message: "At least $10" },
+      error: "reload_below_minimum",
+      errorBody: { error: "Each automatic reload adds at least the minimum", code: "reload_below_minimum", minimum_cents: BILLING_MIN },
       status: 400,
     });
-    const err = await thrown(
-      handleToolCall("distribute_prepay", { topup_amount_cents: 500, auto_topup_amount_cents: 1000, auto_topup_threshold_cents: 500 }),
-    );
-    expect(err.error).toBe("amount_below_minimum");
-    expect(err.field).toBe("topup_amount_cents");
+    const err = await thrown(handleToolCall("distribute_prepay", { topup_amount_cents: 2000, auto_topup_amount_cents: 1 }));
+    expect(err).toMatchObject({ status: 400, code: "reload_below_minimum", minimum_cents: BILLING_MIN });
   });
 
   it("prepaid status reads the gateway, with the caller's target", async () => {
@@ -115,34 +125,44 @@ describe("prepay", () => {
     expect(result).toEqual({ state: "awaiting_payment", balance_cents: "0" });
   });
 
-  it("the minimums the tools state are the owner's: $10 / $10 / $5", () => {
-    expect(PREPAY_MINIMUMS).toEqual({ topup_amount_cents: 1000, auto_topup_amount_cents: 1000, auto_topup_threshold_cents: 500 });
-    expect(toolDefinitions.distribute_prepay.description).toContain("No human needed");
-    expect(toolDefinitions.distribute_prepay.description).toContain("auto_topup_amount_cents 1000 ($10");
-    expect(toolDefinitions.distribute_prepay.description).not.toContain("$15");
+  it("no tool states a reload figure or a threshold of its own", () => {
+    const prepay = toolDefinitions.distribute_prepay;
+    expect(prepay.description).toContain("No human needed");
+    expect(Object.keys(prepay.schema.shape)).not.toContain("auto_topup_threshold_cents");
+    for (const name of ["distribute_prepay", "distribute_reload_rules", "distribute_set_reload_amount"] as const) {
+      const d = toolDefinitions[name];
+      const text = d.description + JSON.stringify(Object.values(d.schema.shape).map((f) => (f as { description?: string }).description));
+      expect(text).not.toMatch(/\$\d/);
+      expect(text).not.toMatch(/\b(500|1000|1500)\b/);
+      expect(text.toLowerCase()).not.toContain("threshold");
+    }
   });
 
-  // AGENT-RELOAD-10-1117, owner 2026-11-11: « +10 dès qu'on arrive sous $5 ».
-  it("a reload left out defaults to 1000 cents ($10)", async () => {
-    mockCallApi.mockResolvedValue({ data: { url: "https://checkout.stripe.com/d" }, status: 200 });
-    await handleToolCall("distribute_prepay", { topup_amount_cents: 1000, auto_topup_threshold_cents: 500 });
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/billing/accounts/prepaid_checkout", {
-      method: "POST",
-      body: { topup_amount_cents: 1000, auto_topup_amount_cents: 1000, auto_topup_threshold_cents: 500 },
+  it("reload rules are read from billing, with the caller's target", async () => {
+    const rules = { first_topup_minimum_cents: BILLING_MIN, reload_amount_minimum_cents: BILLING_MIN, reload_threshold_minimum_cents: 0, default_reload_amount_cents: BILLING_MIN, default_reload_threshold_cents: 0 };
+    mockCallApi.mockResolvedValue({ data: rules, status: 200 });
+    const result = await handleToolCall("distribute_reload_rules", { orgId: "o1" });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/billing/accounts/reload_rules?orgId=o1");
+    expect(result).toEqual(rules);
+  });
+
+  it("set reload amount PATCHes only the amount: no payment, no threshold", async () => {
+    mockCallApi.mockResolvedValue({ data: { topup_amount_cents: 2500 }, status: 200 });
+    await handleToolCall("distribute_set_reload_amount", { topup_amount_cents: 2500, orgId: "o1" });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/billing/accounts/auto_topup?orgId=o1", {
+      method: "PATCH",
+      body: { topup_amount_cents: 2500 },
     });
   });
 
-  it("a 999-cent reload comes back refused, naming the $10 minimum", async () => {
+  it("set reload amount relays billing's topup_below_minimum refusal whole", async () => {
     mockCallApi.mockResolvedValue({
-      error: "amount_below_minimum",
-      errorBody: { error: "amount_below_minimum", code: "amount_below_minimum", field: "auto_topup_amount_cents", minimum_cents: 1000, message: "auto_topup_amount_cents must be at least 1000 ($10.00); got 999 ($9.99)." },
+      error: "topup_below_minimum",
+      errorBody: { error: "Each automatic reload adds at least the minimum", code: "topup_below_minimum", minimum_cents: BILLING_MIN },
       status: 400,
     });
-    const err = await thrown(
-      handleToolCall("distribute_prepay", { topup_amount_cents: 1000, auto_topup_amount_cents: 999, auto_topup_threshold_cents: 500 }),
-    );
-    expect(err.field).toBe("auto_topup_amount_cents");
-    expect(err.minimum_cents).toBe(1000);
+    const err = await thrown(handleToolCall("distribute_set_reload_amount", { topup_amount_cents: 1 }));
+    expect(err).toMatchObject({ status: 400, code: "topup_below_minimum", minimum_cents: BILLING_MIN });
   });
 });
 
