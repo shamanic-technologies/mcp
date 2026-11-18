@@ -84,27 +84,11 @@ export function paymentRequired(result: { error?: string; errorBody?: ApiErrorBo
     status: 402,
     ...(result.errorBody ?? { error: result.error ?? "payment_required" }),
     nextStep:
-      "This call costs money and the organization has no prepaid balance. Call distribute_prepay (amounts in cents: " +
-      `topup_amount_cents >= ${PREPAY_MINIMUMS.topup_amount_cents}, auto_topup_amount_cents >= ${PREPAY_MINIMUMS.auto_topup_amount_cents}, ` +
-      `auto_topup_threshold_cents >= ${PREPAY_MINIMUMS.auto_topup_threshold_cents}). It returns a payment url: open it, or give it to your human to pay by card. ` +
+      "This call costs money and the organization has no prepaid balance. Call distribute_prepay with `topup_amount_cents` at least the minimum " +
+      "billing states (distribute_reload_rules, or the `prepay` block above). It returns a payment url: open it, or give it to your human to pay by card. " +
       "Check with distribute_prepaid_status, then retry this call.",
   };
 }
-
-/**
- * The gateway's prepaid minimums (api-service `src/lib/agent-prepay.ts`):
- * $10 prepay, $10 reload, $5 threshold. Owner 2026-11-11 replaced the old $15
- * reload: « +10 dès qu'on arrive sous $5 » (each reload adds at least $10,
- * whatever the threshold; same rule as the dashboard checkout). Example: pay
- * $10, campaigns spend down to $4.90, the card is charged $10, balance $14.90.
- * Named here only to tell an agent what to send (and the reload default); the
- * gateway is what refuses less (`amount_below_minimum`).
- */
-export const PREPAY_MINIMUMS = {
-  topup_amount_cents: 1000,
-  auto_topup_amount_cents: 1000,
-  auto_topup_threshold_cents: 500,
-} as const;
 
 /**
  * Said in every signup and prepay tool, and in the discovery document: an agent
@@ -243,19 +227,18 @@ export const toolDefinitions = {
     description:
       NO_HUMAN_NEEDED + " " +
       "Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). " +
-      "Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically: " +
-      "when the balance falls under `auto_topup_threshold_cents`, it adds `auto_topup_amount_cents`. Auto top-up is required. " +
-      "Amounts in cents, minimums: topup_amount_cents 1000 ($10), auto_topup_amount_cents 1000 ($10, the default), auto_topup_threshold_cents 500 ($5). " +
-      "Example: pay $10, campaigns spend down to $4.90, the card is charged $10, balance $14.90. " +
-      "Less is refused with `amount_below_minimum`, naming the field. " +
+      "Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically " +
+      "when it runs out, adding `auto_topup_amount_cents` each time. Auto top-up is required. " +
+      "Amounts in cents. The minimums and the default reload are billing's: read them with distribute_reload_rules. " +
+      "Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). " +
+      "Change the reload amount later, with no new payment, with distribute_set_reload_amount. " +
       "Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog " +
       "(an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. " +
       "Then check distribute_prepaid_status until `state` is `active`. " +
       TARGET_HINT,
     schema: z.object({
-      topup_amount_cents: z.number().int().describe("First prepayment, in cents. At least 1000 ($10)."),
-      auto_topup_amount_cents: z.number().int().optional().describe("Amount added at each automatic reload, in cents. At least 1000 ($10), whatever the threshold. Default 1000 ($10)."),
-      auto_topup_threshold_cents: z.number().int().describe("Balance under which the card reloads, in cents. At least 500 ($5)."),
+      topup_amount_cents: z.number().int().describe("First prepayment, in cents. At least `first_topup_minimum_cents` from distribute_reload_rules."),
+      auto_topup_amount_cents: z.number().int().optional().describe("Amount added at each automatic reload, in cents. At least `reload_amount_minimum_cents`; leave it out for billing's default."),
       success_url: z.string().optional().describe("Page shown after paying (default https://distribute.you/?prepaid=paid)."),
       cancel_url: z.string().optional().describe("Page shown if payment is cancelled (default https://distribute.you/?prepaid=cancelled)."),
       ...targetShape,
@@ -267,6 +250,23 @@ export const toolDefinitions = {
       "`balance_cents`, `paid_cents`, the automatic reload settings and whether the saved card can reload. Free to call. " +
       TARGET_HINT,
     schema: z.object({ ...targetShape }),
+  },
+  distribute_reload_rules: {
+    description:
+      "Read the organization's prepaid rules from billing, in cents: `first_topup_minimum_cents` (first prepayment), " +
+      "`reload_amount_minimum_cents` and `default_reload_amount_cents` (what each automatic reload adds). The card reloads when the balance runs out. Free to call. " +
+      TARGET_HINT,
+    schema: z.object({ ...targetShape }),
+  },
+  distribute_set_reload_amount: {
+    description:
+      "Change how much each automatic reload adds to a prepaid balance. Charges nothing now: the next reload uses the new amount. " +
+      "At least `reload_amount_minimum_cents` (distribute_reload_rules); less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). " +
+      TARGET_HINT,
+    schema: z.object({
+      topup_amount_cents: z.number().int().describe("Amount each automatic reload adds, in cents."),
+      ...targetShape,
+    }),
   },
   distribute_list_workflows: {
     description:
@@ -635,6 +635,12 @@ export async function handleToolCall(
     case "distribute_prepaid_status":
       return handlePrepaidStatus(args);
 
+    case "distribute_reload_rules":
+      return handleReloadRules(args);
+
+    case "distribute_set_reload_amount":
+      return handleSetReloadAmount(args);
+
     case "distribute_list_workflows":
       return handleListWorkflows(args);
 
@@ -714,7 +720,7 @@ export const STATUS_FULL_LIST_MAX_ORGS = 20;
 const SIGNUP_INSTRUCTIONS = [
   "1. Call distribute_signup_start with an email you can read and a phone number (+33612345678). A 6-digit code is emailed.",
   "2. Call distribute_signup_complete with that email and code. It returns an API key, and this session uses it right away.",
-  "3. Reading the account is free. To spend, prepay with distribute_prepay (from $10, auto top-up required) and pay at the url it returns.",
+  "3. Reading the account is free. To spend, prepay with distribute_prepay (minimums at distribute_reload_rules, auto top-up required) and pay at the url it returns.",
   "Already have a key? Send it as the header Authorization: Bearer <your key> (in an MCP client, put that header in this server's configuration and reconnect). " +
     "A person can also create one at https://dashboard.distribute.you (organization, then API Key).",
 ];
@@ -1784,7 +1790,7 @@ async function handleSignupComplete(args: Record<string, unknown>) {
       reconnectMcp: "Later, connect to https://mcp.distribute.you/mcp with the header `Authorization: Bearer <apiKey>`.",
       api: "Or call https://api.distribute.you with the same header (first call: GET /v1/me).",
     },
-    toSpend: "Reading is free. Before any call that spends, prepay with distribute_prepay (from $10, auto top-up required).",
+    toSpend: "Reading is free. Before any call that spends, prepay with distribute_prepay (minimums at distribute_reload_rules, auto top-up required).",
   };
 }
 
@@ -1800,12 +1806,10 @@ export function mintedKey(tool: string, result: unknown): string | null {
 }
 
 async function handlePrepay(args: Record<string, unknown>) {
-  const body: Record<string, unknown> = {
-    topup_amount_cents: args.topup_amount_cents,
-    auto_topup_amount_cents:
-      args.auto_topup_amount_cents === undefined ? PREPAY_MINIMUMS.auto_topup_amount_cents : args.auto_topup_amount_cents,
-    auto_topup_threshold_cents: args.auto_topup_threshold_cents,
-  };
+  // No threshold, ever (owner 2026-11-18: $0 for everyone, changeable nowhere), and
+  // no local reload figure: a reload left out gets billing's default.
+  const body: Record<string, unknown> = { topup_amount_cents: args.topup_amount_cents };
+  if (args.auto_topup_amount_cents !== undefined) body.auto_topup_amount_cents = args.auto_topup_amount_cents;
   if (typeof args.success_url === "string") body.success_url = args.success_url;
   if (typeof args.cancel_url === "string") body.cancel_url = args.cancel_url;
   const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/prepaid_checkout", args), {
@@ -1821,6 +1825,23 @@ async function handlePrepay(args: Record<string, unknown>) {
 
 async function handlePrepaidStatus(args: Record<string, unknown>) {
   const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/prepaid_status", args));
+  if (result.error) failWhole(result);
+  return result.data;
+}
+
+/** billing-service is the ONE home of the prepaid reload rule (RELOAD-RULE-ONE-HOME-1118): read, never restated here. */
+async function handleReloadRules(args: Record<string, unknown>) {
+  const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/reload_rules", args));
+  if (result.error) failWhole(result);
+  return result.data;
+}
+
+/** Only the reload amount: billing changes it with no payment and refuses less than its minimum. */
+async function handleSetReloadAmount(args: Record<string, unknown>) {
+  const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/auto_topup", args), {
+    method: "PATCH",
+    body: { topup_amount_cents: args.topup_amount_cents },
+  });
   if (result.error) failWhole(result);
   return result.data;
 }

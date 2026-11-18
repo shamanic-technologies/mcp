@@ -11,7 +11,7 @@ An AI agent can open a distribute.you account, get an API key and prepay, all th
 1. Connect to `https://mcp.distribute.you/mcp` with no header.
 2. `distribute_signup_start` with an email the agent can read and a phone number in international format (`+33612345678`, only its format is checked). A 6-digit code is emailed.
 3. `distribute_signup_complete` with the email and the code. It returns `apiKey` (shown once: store it). The session uses it right away, even one opened with a placeholder or refused key. Later, reconnect with `Authorization: Bearer <apiKey>`, or call `https://api.distribute.you` with that header. Each call makes a new key; an email that already has an account gets one more key for it.
-4. Reading the account is free. Before anything that spends, `distribute_prepay` with amounts in cents (minimums: `topup_amount_cents` 1000 = $10, `auto_topup_amount_cents` 1000 = $10 (default), `auto_topup_threshold_cents` 500 = $5). It returns a payment `url`: open it, or hand it to a human to pay by card. Auto top-up is required. Less than a minimum is refused with `amount_below_minimum`, naming the field.
+4. Reading the account is free. Before anything that spends, `distribute_prepay` with `topup_amount_cents` (and optionally `auto_topup_amount_cents`, what each automatic reload adds). The minimums and the default reload are billing's: read them with `distribute_reload_rules`. It returns a payment `url`: open it, or hand it to a human to pay by card. Auto top-up is required; the card reloads when the balance runs out. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`). `distribute_set_reload_amount` changes the reload amount later, with no new payment.
 5. `distribute_prepaid_status` until `state` is `active`.
 
 Pay as you go: you prepay a balance, and each action is billed from it at its price on [distribute.you/catalog](https://distribute.you/catalog) (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap. A call that costs money on an account with no balance comes back `402 payment_required` with the gateway's `prepay` block and a `nextStep` naming `distribute_prepay`, so the agent prepays and retries.
@@ -51,7 +51,7 @@ Call `distribute_status` first — it confirms the key reached the gateway, list
 
 ## Tools
 
-There are **29 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
+There are **31 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
 
 **Same scope as the API.** Whatever your key can do on `https://api.distribute.you/v1/*`, it can do from here, and nothing more: the API decides on every call what the key may read or write, and this server never widens or narrows it. Our own internals (prompt text, models, token counts, generation costs, the internal service registry) never come back through it.
 
@@ -61,8 +61,10 @@ Get a key and pay, no human needed (the two signup tools work with no key):
 |---|---|
 | `distribute_signup_start` | Open an account: email + phone, a 6-digit code is emailed |
 | `distribute_signup_complete` | Send the code, get an API key; the session uses it at once |
-| `distribute_prepay` | Get a payment page to prepay (from $10, auto top-up required) |
+| `distribute_prepay` | Get a payment page to prepay (auto top-up required) |
 | `distribute_prepaid_status` | Prepaid state, balance, auto top-up and card |
+| `distribute_reload_rules` | Billing's minimums and default reload amount |
+| `distribute_set_reload_amount` | Change what each automatic reload adds, with no payment |
 
 Curated tools, for the frequent jobs:
 

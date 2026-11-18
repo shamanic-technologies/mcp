@@ -92,8 +92,11 @@ describe("the curated tools are read-only", () => {
     // another phone / email a person gave (CONTACT-REDIRECT-1101);
     // and the client's "this is not good" on something we made (SCRIPT-VALUE-RATING-1113): one
     // append-only report, nothing blocked, rewritten or re-sent. None touches a campaign or money.
+    // ONE PATCH: the prepaid reload AMOUNT (owner 2026-11-18, RELOAD-RULE-ONE-HOME-1118), which
+    // charges nothing and touches no campaign; billing refuses less than its minimum.
     const posts = src.match(/method: "(POST|PUT|PATCH|DELETE)"/g) ?? [];
-    expect(posts).toEqual(['method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"']);
+    expect(posts.sort()).toEqual(['method: "PATCH"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"']);
+    expect(src).toContain('withTarget("/v1/billing/accounts/auto_topup", args), {\n    method: "PATCH",\n    body: { topup_amount_cents: args.topup_amount_cents },');
     expect(src).toContain("/v1/features/unit-reports");
     for (const path of ["/v1/orgs/people/corrections", "/v1/orgs/people/merges", "/v1/orgs/people/handles"]) expect(src).toContain(path);
     expect(src).toContain("/icp/suggest");

@@ -138,7 +138,7 @@
         }
       },
       "distribute_prepay": {
-        "description": "No human needed: request a key with an email, prepay when you need to spend. Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically: when the balance falls under `auto_topup_threshold_cents`, it adds `auto_topup_amount_cents`. Auto top-up is required. Amounts in cents, minimums: topup_amount_cents 1000 ($10), auto_topup_amount_cents 1000 ($10, the default), auto_topup_threshold_cents 500 ($5). Example: pay $10, campaigns spend down to $4.90, the card is charged $10, balance $14.90. Less is refused with `amount_below_minimum`, naming the field. Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. Then check distribute_prepaid_status until `state` is `active`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "No human needed: request a key with an email, prepay when you need to spend. Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically when it runs out, adding `auto_topup_amount_cents` each time. Auto top-up is required. Amounts in cents. The minimums and the default reload are billing's: read them with distribute_reload_rules. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Change the reload amount later, with no new payment, with distribute_set_reload_amount. Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. Then check distribute_prepaid_status until `state` is `active`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_prepay",
           "definitions": {
@@ -147,15 +147,11 @@
               "properties": {
                 "topup_amount_cents": {
                   "type": "integer",
-                  "description": "First prepayment, in cents. At least 1000 ($10)."
+                  "description": "First prepayment, in cents. At least `first_topup_minimum_cents` from distribute_reload_rules."
                 },
                 "auto_topup_amount_cents": {
-                  "description": "Amount added at each automatic reload, in cents. At least 1000 ($10), whatever the threshold. Default 1000 ($10).",
+                  "description": "Amount added at each automatic reload, in cents. At least `reload_amount_minimum_cents`; leave it out for billing's default.",
                   "type": "integer"
-                },
-                "auto_topup_threshold_cents": {
-                  "type": "integer",
-                  "description": "Balance under which the card reloads, in cents. At least 500 ($5)."
                 },
                 "success_url": {
                   "description": "Page shown after paying (default https://distribute.you/?prepaid=paid).",
@@ -175,8 +171,7 @@
                 }
               },
               "required": [
-                "topup_amount_cents",
-                "auto_topup_threshold_cents"
+                "topup_amount_cents"
               ],
               "additionalProperties": false
             }
@@ -201,6 +196,59 @@
                   "type": "string"
                 }
               },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_reload_rules": {
+        "description": "Read the organization's prepaid rules from billing, in cents: `first_topup_minimum_cents` (first prepayment), `reload_amount_minimum_cents` and `default_reload_amount_cents` (what each automatic reload adds). The card reloads when the balance runs out. Free to call. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_reload_rules",
+          "definitions": {
+            "distribute_reload_rules": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_set_reload_amount": {
+        "description": "Change how much each automatic reload adds to a prepaid balance. Charges nothing now: the next reload uses the new amount. At least `reload_amount_minimum_cents` (distribute_reload_rules); less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_set_reload_amount",
+          "definitions": {
+            "distribute_set_reload_amount": {
+              "type": "object",
+              "properties": {
+                "topup_amount_cents": {
+                  "type": "integer",
+                  "description": "Amount each automatic reload adds, in cents."
+                },
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "topup_amount_cents"
+              ],
               "additionalProperties": false
             }
           },
@@ -1453,7 +1501,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "No human needed: request a key with an email, prepay when you need to spend. Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically: when the balance falls under `auto_topup_threshold_cents`, it adds `auto_topup_amount_cents`. Auto top-up is required. Amounts in cents, minimums: topup_amount_cents 1000 ($10), auto_topup_amount_cents 1000 ($10, the default), auto_topup_threshold_cents 500 ($5). Example: pay $10, campaigns spend down to $4.90, the card is charged $10, balance $14.90. Less is refused with `amount_below_minimum`, naming the field. Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. Then check distribute_prepaid_status until `state` is `active`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "No human needed: request a key with an email, prepay when you need to spend. Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically when it runs out, adding `auto_topup_amount_cents` each time. Auto top-up is required. Amounts in cents. The minimums and the default reload are billing's: read them with distribute_reload_rules. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Change the reload amount later, with no new payment, with distribute_set_reload_amount. Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. Then check distribute_prepaid_status until `state` is `active`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_prepay. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_prepay\".",
         "requestBody": {
           "content": {
@@ -1463,15 +1511,11 @@
                 "properties": {
                   "topup_amount_cents": {
                     "type": "integer",
-                    "description": "First prepayment, in cents. At least 1000 ($10)."
+                    "description": "First prepayment, in cents. At least `first_topup_minimum_cents` from distribute_reload_rules."
                   },
                   "auto_topup_amount_cents": {
-                    "description": "Amount added at each automatic reload, in cents. At least 1000 ($10), whatever the threshold. Default 1000 ($10).",
+                    "description": "Amount added at each automatic reload, in cents. At least `reload_amount_minimum_cents`; leave it out for billing's default.",
                     "type": "integer"
-                  },
-                  "auto_topup_threshold_cents": {
-                    "type": "integer",
-                    "description": "Balance under which the card reloads, in cents. At least 500 ($5)."
                   },
                   "success_url": {
                     "description": "Page shown after paying (default https://distribute.you/?prepaid=paid).",
@@ -1491,8 +1535,7 @@
                   }
                 },
                 "required": [
-                  "topup_amount_cents",
-                  "auto_topup_threshold_cents"
+                  "topup_amount_cents"
                 ],
                 "additionalProperties": false
               }
@@ -1552,6 +1595,129 @@
                     "type": "string"
                   }
                 },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_reload_rules": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Read the organization's prepaid rules from billing, in cents: `first_topup_minimum_cents` (first prepayment), `reload_amount_minimum_cents` and `default_reload_amount_cents` (what each automatic reload adds). The card reloads when the balance runs out. Free to call. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_reload_rules. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_reload_rules\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_set_reload_amount": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Change how much each automatic reload adds to a prepaid balance. Charges nothing now: the next reload uses the new amount. At least `reload_amount_minimum_cents` (distribute_reload_rules); less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_set_reload_amount. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_set_reload_amount\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "topup_amount_cents": {
+                    "type": "integer",
+                    "description": "Amount each automatic reload adds, in cents."
+                  },
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "topup_amount_cents"
+                ],
                 "additionalProperties": false
               }
             }
