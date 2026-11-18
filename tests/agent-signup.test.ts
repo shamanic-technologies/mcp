@@ -155,6 +155,38 @@ describe("prepay", () => {
     });
   });
 
+  // RELOAD-ZERO-OFF-1118 (owner 2026-11-18): a reload amount of 0 turns automatic reload
+  // off. Billing decides; the tool forwards the 0 and never tells anyone to remove a card.
+  it("set reload amount forwards 0 to billing (0 turns automatic reload off)", async () => {
+    mockCallApi.mockResolvedValue({ data: { has_auto_topup: false, topup_amount_cents: null }, status: 200 });
+    const result = await handleToolCall("distribute_set_reload_amount", { topup_amount_cents: 0, orgId: "o1" });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/billing/accounts/auto_topup?orgId=o1", {
+      method: "PATCH",
+      body: { topup_amount_cents: 0 },
+    });
+    expect(result).toEqual({ has_auto_topup: false, topup_amount_cents: null });
+  });
+
+  it("the reload tools say 0 turns automatic reload off, and never to remove a card", () => {
+    expect(toolDefinitions.distribute_set_reload_amount.description).toContain("0 turns automatic reload off");
+    expect(toolDefinitions.distribute_set_reload_amount.schema.safeParse({ topup_amount_cents: 0 }).success).toBe(true);
+    for (const name of ["distribute_prepay", "distribute_prepaid_status", "distribute_reload_rules", "distribute_set_reload_amount"] as const) {
+      expect(toolDefinitions[name].description).not.toMatch(/remove (your|the|a) card/i);
+    }
+    expect(toolDefinitions.distribute_prepay.description).toContain("0 turns automatic reload off");
+    expect(toolDefinitions.distribute_prepaid_status.description).toContain("0 turns it off");
+  });
+
+  it("set reload amount relays billing's auto_topup_required refusal of 0 whole", async () => {
+    mockCallApi.mockResolvedValue({
+      error: "auto_topup_required",
+      errorBody: { error: "Automatic top-up is required for this prepaid organization; change its amounts instead.", code: "auto_topup_required" },
+      status: 409,
+    });
+    const err = await thrown(handleToolCall("distribute_set_reload_amount", { topup_amount_cents: 0 }));
+    expect(err).toMatchObject({ status: 409, code: "auto_topup_required" });
+  });
+
   it("set reload amount relays billing's topup_below_minimum refusal whole", async () => {
     mockCallApi.mockResolvedValue({
       error: "topup_below_minimum",

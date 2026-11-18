@@ -231,7 +231,7 @@ export const toolDefinitions = {
       "when it runs out, adding `auto_topup_amount_cents` each time. Auto top-up is required. " +
       "Amounts in cents. The minimums and the default reload are billing's: read them with distribute_reload_rules. " +
       "Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). " +
-      "Change the reload amount later, with no new payment, with distribute_set_reload_amount. " +
+      "Change the reload amount later, with no new payment, with distribute_set_reload_amount; a reload amount of 0 turns automatic reload off. " +
       "Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog " +
       "(an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. " +
       "Then check distribute_prepaid_status until `state` is `active`. " +
@@ -246,7 +246,8 @@ export const toolDefinitions = {
   },
   distribute_prepaid_status: {
     description:
-      "Read the prepaid account: `state` (awaiting_payment: not paid yet; active: ready to spend; card_not_reloadable or auto_topup_off: fix it with distribute_prepay; not_prepaid), " +
+      "Read the prepaid account: `state` (awaiting_payment: not paid yet; active: ready to spend; card_not_reloadable: fix it with distribute_prepay; " +
+      "auto_topup_off: the automatic reload is off (a reload amount of 0 turns it off), turn it back on with distribute_set_reload_amount or distribute_prepay; not_prepaid), " +
       "`balance_cents`, `paid_cents`, the automatic reload settings and whether the saved card can reload. Free to call. " +
       TARGET_HINT,
     schema: z.object({ ...targetShape }),
@@ -261,10 +262,12 @@ export const toolDefinitions = {
   distribute_set_reload_amount: {
     description:
       "Change how much each automatic reload adds to a prepaid balance. Charges nothing now: the next reload uses the new amount. " +
-      "At least `reload_amount_minimum_cents` (distribute_reload_rules); less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). " +
+      "0 turns automatic reload off: the balance is then never reloaded. Any other amount is at least `reload_amount_minimum_cents` (distribute_reload_rules); " +
+      "less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). An organization whose offer requires automatic reload refuses 0 " +
+      "(409 `auto_topup_required`, relayed as is). " +
       TARGET_HINT,
     schema: z.object({
-      topup_amount_cents: z.number().int().describe("Amount each automatic reload adds, in cents."),
+      topup_amount_cents: z.number().int().min(0).describe("Amount each automatic reload adds, in cents. 0 turns automatic reload off."),
       ...targetShape,
     }),
   },
@@ -1836,7 +1839,7 @@ async function handleReloadRules(args: Record<string, unknown>) {
   return result.data;
 }
 
-/** Only the reload amount: billing changes it with no payment and refuses less than its minimum. */
+/** Only the reload amount: billing changes it with no payment, refuses less than its minimum, and 0 turns automatic reload off (RELOAD-ZERO-OFF-1118). */
 async function handleSetReloadAmount(args: Record<string, unknown>) {
   const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/auto_topup", args), {
     method: "PATCH",
