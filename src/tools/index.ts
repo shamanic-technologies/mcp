@@ -263,8 +263,7 @@ export const toolDefinitions = {
     description:
       "Change how much each automatic reload adds to a prepaid balance. Charges nothing now: the next reload uses the new amount. " +
       "0 turns automatic reload off: the balance is then never reloaded. Any other amount is at least `reload_amount_minimum_cents` (distribute_reload_rules); " +
-      "less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). An organization whose offer requires automatic reload refuses 0 " +
-      "(409 `auto_topup_required`, relayed as is). " +
+      "less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). " +
       TARGET_HINT,
     schema: z.object({
       topup_amount_cents: z.number().int().min(0).describe("Amount each automatic reload adds, in cents. 0 turns automatic reload off."),
