@@ -11,7 +11,7 @@ An AI agent can open a distribute.you account, get an API key and prepay, all th
 1. Connect to `https://mcp.distribute.you/mcp` with no header.
 2. `distribute_signup_start` with an email the agent can read and a phone number in international format (`+33612345678`, only its format is checked). A 6-digit code is emailed.
 3. `distribute_signup_complete` with the email and the code. It returns `apiKey` (shown once: store it). The session uses it right away, even one opened with a placeholder or refused key. Later, reconnect with `Authorization: Bearer <apiKey>`, or call `https://api.distribute.you` with that header. Each call makes a new key; an email that already has an account gets one more key for it.
-4. Reading the account is free. Before anything that spends, `distribute_prepay` with `topup_amount_cents` (and optionally `auto_topup_amount_cents`, what each automatic reload adds). The minimums and the default reload are billing's: read them with `distribute_reload_rules`. It returns a payment `url`: open it, or hand it to a human to pay by card. Auto top-up is required; the card reloads when the balance runs out. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`). `distribute_set_reload_amount` changes the reload amount later, with no new payment.
+4. Reading the account is free. Before anything that spends, `distribute_prepay` with `topup_amount_cents` (and optionally `auto_topup_amount_cents`, what each automatic reload adds). The minimums and the default reload are billing's: read them with `distribute_reload_rules`. It returns a payment `url`: open it, or hand it to a human to pay by card. Auto top-up is required; the card reloads when the balance runs out. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`). `distribute_set_reload_amount` changes the reload amount later, with no new payment; a reload amount of 0 turns automatic reload off.
 5. `distribute_prepaid_status` until `state` is `active`.
 
 Pay as you go: you prepay a balance, and each action is billed from it at its price on [distribute.you/catalog](https://distribute.you/catalog) (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap. A call that costs money on an account with no balance comes back `402 payment_required` with the gateway's `prepay` block and a `nextStep` naming `distribute_prepay`, so the agent prepays and retries.
@@ -64,7 +64,7 @@ Get a key and pay, no human needed (the two signup tools work with no key):
 | `distribute_prepay` | Get a payment page to prepay (auto top-up required) |
 | `distribute_prepaid_status` | Prepaid state, balance, auto top-up and card |
 | `distribute_reload_rules` | Billing's minimums and default reload amount |
-| `distribute_set_reload_amount` | Change what each automatic reload adds, with no payment |
+| `distribute_set_reload_amount` | Change what each automatic reload adds, with no payment (0 turns it off) |
 
 Curated tools, for the frequent jobs:
 
