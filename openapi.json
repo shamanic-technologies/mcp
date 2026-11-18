@@ -226,7 +226,7 @@
         }
       },
       "distribute_set_reload_amount": {
-        "description": "Change how much each automatic reload adds to a prepaid balance. Charges nothing now: the next reload uses the new amount. 0 turns automatic reload off: the balance is then never reloaded. Any other amount is at least `reload_amount_minimum_cents` (distribute_reload_rules); less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). An organization whose offer requires automatic reload refuses 0 (409 `auto_topup_required`, relayed as is). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "Change how much each automatic reload adds to a prepaid balance. Charges nothing now: the next reload uses the new amount. 0 turns automatic reload off: the balance is then never reloaded. Any other amount is at least `reload_amount_minimum_cents` (distribute_reload_rules); less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_set_reload_amount",
           "definitions": {
@@ -1695,7 +1695,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Change how much each automatic reload adds to a prepaid balance. Charges nothing now: the next reload uses the new amount. 0 turns automatic reload off: the balance is then never reloaded. Any other amount is at least `reload_amount_minimum_cents` (distribute_reload_rules); less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). An organization whose offer requires automatic reload refuses 0 (409 `auto_topup_required`, relayed as is). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "Change how much each automatic reload adds to a prepaid balance. Charges nothing now: the next reload uses the new amount. 0 turns automatic reload off: the balance is then never reloaded. Any other amount is at least `reload_amount_minimum_cents` (distribute_reload_rules); less is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_set_reload_amount. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_set_reload_amount\".",
         "requestBody": {
           "content": {
