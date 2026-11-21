@@ -286,7 +286,7 @@ export const toolDefinitions = {
       "List the campaigns of one brand or organization. A campaign is one sales funnel run for a brand, for one of its offers or for none (`offerId` null), started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), " +
       "a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), " +
       "and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. " +
-      "A campaign with no max budget spends nothing. Report each campaign by its name. " +
+      "A campaign with no max budget spends nothing. Each campaign has its OWN caps, even when two share one target: set them with PUT /v1/brands/{brandId}/offers/{offerId}/sales-funnels/{salesFunnelId}/campaigns/{salesFunnelCampaignId}/caps (no offer: drop /offers/{offerId}). Two campaigns on one target: give each a different launchKey on POST /v1/sales-funnel-campaigns. Report each campaign by its name. " +
       "Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; " +
       "\"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead → Sales Cold Email Outreach → Positive reply → Paid client\"; the outcome names are the platform's own, read as served). " +
       "A campaign can also run parts beside its path, each in `otherParts` with its own `runsWhen`, `path` and `description` " +
@@ -958,8 +958,8 @@ async function handleListWorkflows(args: Record<string, unknown>) {
  * A CAMPAIGN is what the customer launched and pays for (owner 2026-10-10): one brand, an offer or none,
  * one sales funnel, run or paused as one, with a max budget and a max volume. campaign-service
  * serves it (`/v1/sales-funnel-campaigns`); billing-service serves its limits and what the
- * current period consumed (`/v1/brands/:b/offers/:o/sales-funnels/:id/caps`, or
- * `/v1/brands/:b/sales-funnels/:id/caps` for a campaign naming no offer).
+ * current period consumed (`/v1/brands/:b/offers/:o/sales-funnels/:id/campaigns/:campaignId/caps`, or
+ * `/v1/brands/:b/sales-funnels/:id/campaigns/:campaignId/caps` for a campaign naming no offer).
  *
  * Inside, a campaign runs one PART per channel step (a `/v1/campaigns` row each). A customer never
  * reads a part as a campaign, never counts them as campaigns, never sees one named as one (owner
@@ -1034,10 +1034,13 @@ function limitWords(type: string | null, caps: CapsBody): { budget: string | nul
 async function funnelCampaignCaps(c: FunnelCampaign, args: Record<string, unknown>) {
   // A campaign naming no offer reads its caps on billing's offer-less route, same body
   // (DISTRY-CALL-IS-CAMPAIGN-1121): never `/offers/null`.
+  // ONE campaign's caps (OUTREACH-3WAYS-1121): two campaigns of a brand may share one funnel (same Target, each its
+  // own brief, its own launchKey), so the read is the campaign's own route: billing answers the campaign's own cap
+  // when stated, else the funnel-wide one (same body + capScope).
   const offerSegment = c.offerId == null ? "" : `/offers/${encodeURIComponent(c.offerId)}`;
   const path =
     `/v1/brands/${encodeURIComponent(c.brandId)}${offerSegment}` +
-    `/sales-funnels/${encodeURIComponent(c.salesFunnelId)}/caps`;
+    `/sales-funnels/${encodeURIComponent(c.salesFunnelId)}/campaigns/${encodeURIComponent(c.id)}/caps`;
   const result = await callApi<CapsBody>(withTarget(path, args));
   if (result.error) failWith(result);
   const caps = result.data as CapsBody;
