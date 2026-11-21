@@ -286,7 +286,7 @@ export const toolDefinitions = {
       "List the campaigns of one brand or organization. A campaign is one sales funnel run for a brand, for one of its offers or for none (`offerId` null), started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), " +
       "a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), " +
       "and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. " +
-      "A campaign with no max budget spends nothing. When `capsUnavailableReason` is set, its caps are not readable here yet: say so, never \"no budget\". Report each campaign by its name. " +
+      "A campaign with no max budget spends nothing. Report each campaign by its name. " +
       "Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; " +
       "\"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead → Sales Cold Email Outreach → Positive reply → Paid client\"; the outcome names are the platform's own, read as served). " +
       "A campaign can also run parts beside its path, each in `otherParts` with its own `runsWhen`, `path` and `description` " +
@@ -958,7 +958,8 @@ async function handleListWorkflows(args: Record<string, unknown>) {
  * A CAMPAIGN is what the customer launched and pays for (owner 2026-10-10): one brand, an offer or none,
  * one sales funnel, run or paused as one, with a max budget and a max volume. campaign-service
  * serves it (`/v1/sales-funnel-campaigns`); billing-service serves its limits and what the
- * current period consumed (`/v1/brands/:b/offers/:o/sales-funnels/:id/caps`).
+ * current period consumed (`/v1/brands/:b/offers/:o/sales-funnels/:id/caps`, or
+ * `/v1/brands/:b/sales-funnels/:id/caps` for a campaign naming no offer).
  *
  * Inside, a campaign runs one PART per channel step (a `/v1/campaigns` row each). A customer never
  * reads a part as a campaign, never counts them as campaigns, never sees one named as one (owner
@@ -1030,26 +1031,12 @@ function limitWords(type: string | null, caps: CapsBody): { budget: string | nul
   };
 }
 
-/**
- * A campaign naming no offer: billing does not serve its caps on a route we can call yet
- * (DISTRY-CALL-IS-CAMPAIGN-1121). Its caps read as unknown, said so, never `/offers/null`
- * and never a failed list. Fields mirror the read below so every campaign has the same shape.
- */
-const CAPS_NOT_AVAILABLE_YET = {
-  type: null,
-  budget: null,
-  volume: null,
-  maxBudgetDailyUsd: null,
-  maxBudget: null,
-  maxVolume: null,
-  noBudgetSet: null,
-  capsUnavailableReason: "not available yet for a campaign that names no offer",
-} as const;
-
 async function funnelCampaignCaps(c: FunnelCampaign, args: Record<string, unknown>) {
-  if (c.offerId == null) return CAPS_NOT_AVAILABLE_YET;
+  // A campaign naming no offer reads its caps on billing's offer-less route, same body
+  // (DISTRY-CALL-IS-CAMPAIGN-1121): never `/offers/null`.
+  const offerSegment = c.offerId == null ? "" : `/offers/${encodeURIComponent(c.offerId)}`;
   const path =
-    `/v1/brands/${encodeURIComponent(c.brandId)}/offers/${encodeURIComponent(c.offerId)}` +
+    `/v1/brands/${encodeURIComponent(c.brandId)}${offerSegment}` +
     `/sales-funnels/${encodeURIComponent(c.salesFunnelId)}/caps`;
   const result = await callApi<CapsBody>(withTarget(path, args));
   if (result.error) failWith(result);

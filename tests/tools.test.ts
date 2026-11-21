@@ -302,11 +302,18 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
     expect(out.campaigns[0]!.noBudgetSet).toBe(true);
   });
 
-  it("lists a campaign naming no offer beside one naming an offer, never calling /offers/null", async () => {
+  it("lists a campaign naming no offer beside one naming an offer, reading its caps on the offer-less route", async () => {
     const noOffer = { ...bliss, id: "sfc-backlink", offerId: null, salesFunnelId: "backlink-earned", salesFunnelName: "Backlink earned", units: [] };
+    const noOfferCapsPath = "/v1/brands/b1/sales-funnels/backlink-earned/caps";
     routeApi({
       "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss, noOffer] },
       [capsPath]: blissCaps,
+      [noOfferCapsPath]: {
+        ...blissCaps,
+        salesFunnelId: "backlink-earned",
+        salesFunnelName: "Backlink earned",
+        maxBudget: { ...blissCaps.maxBudget, amountCents: "2000.0000000000", period: "weekly", consumedCents: "500.0000000000", remainingCents: "1500.0000000000", reached: false },
+      },
       [copyPath]: copies(blissCopy, { id: "sfc-backlink", type: "proactive", triggerLabel: null, path: { items: [] } }),
     });
 
@@ -316,18 +323,34 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
     // The campaign naming an offer reads exactly as before.
     expect(out.campaigns[0]!.budget).toBe("Max $10/day");
     expect(out.campaigns[0]!.noBudgetSet).toBe(false);
-    expect(out.campaigns[0]!).not.toHaveProperty("capsUnavailableReason");
-    // The one naming no offer shows, its caps said unknown (never "no budget").
+    // The one naming no offer reads its caps like any other campaign.
     const c = out.campaigns[1]!;
     expect(c.id).toBe("sfc-backlink");
     expect(c.name).toBe("Backlink earned");
     expect(c.offerId).toBeNull();
     expect(c.runsWhen).toBe("On its own, within its caps (no trigger)");
-    expect(c.budget).toBeNull();
-    expect(c.maxBudget).toBeNull();
-    expect(c.noBudgetSet).toBeNull();
-    expect(c.capsUnavailableReason).toBe("not available yet for a campaign that names no offer");
-    expect(mockCallApi.mock.calls.map((a) => String(a[0])).some((p) => p.includes("/offers/null"))).toBe(false);
+    expect(c.type).toBe("proactive");
+    expect(c.budget).toBe("Max $20/week");
+    expect(c.maxBudget).toMatchObject({ amountUsd: 20, period: "weekly", spentThisPeriodUsd: 5, remainingUsd: 15, reached: false });
+    expect(c.noBudgetSet).toBe(false);
+    expect(c).not.toHaveProperty("capsUnavailableReason");
+    const called = mockCallApi.mock.calls.map((a) => String(a[0]));
+    expect(called.some((p) => p.startsWith(noOfferCapsPath))).toBe(true);
+    expect(called.some((p) => p.includes("/offers/null"))).toBe(false);
+  });
+
+  it("says a campaign naming no offer with no max budget spends nothing", async () => {
+    const noOffer = { ...bliss, id: "sfc-backlink", offerId: null, salesFunnelId: "backlink-earned", salesFunnelName: "Backlink earned", units: [] };
+    routeApi({
+      "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [noOffer] },
+      "/v1/brands/b1/sales-funnels/backlink-earned/caps": { ...blissCaps, stated: false, maxBudget: null, maxVolume: null },
+      [copyPath]: copies({ id: "sfc-backlink", type: "proactive", triggerLabel: null, path: { items: [] } }),
+    });
+
+    const out = (await handleToolCall("distribute_list_campaigns", { brandId: "b1" })) as { campaigns: Array<Record<string, any>> };
+
+    expect(out.campaigns[0]!.budget).toBeNull();
+    expect(out.campaigns[0]!.noBudgetSet).toBe(true);
   });
 
   // MCP role-play 2026-10-14: asked to "send one email I wrote", the agent could not tell from this list that a
