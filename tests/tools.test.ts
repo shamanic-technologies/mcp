@@ -241,7 +241,7 @@ const blissCopy = {
 const copies = (...rows: unknown[]) => ({ brandId: "b1", fields: "copy", salesFunnelCampaigns: rows });
 
 describe("distribute_list_campaigns lists campaigns, never their parts", () => {
-  const capsPath = `/v1/brands/b1/offers/off1/sales-funnels/${encodeURIComponent(bliss.salesFunnelId)}/caps`;
+  const capsPath = `/v1/brands/b1/offers/off1/sales-funnels/${encodeURIComponent(bliss.salesFunnelId)}/campaigns/${bliss.id}/caps`;
 
   it("names each campaign, with its type and limits in words", async () => {
     routeApi({ "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss] }, [capsPath]: blissCaps, [copyPath]: copies(blissCopy) });
@@ -304,7 +304,7 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
 
   it("lists a campaign naming no offer beside one naming an offer, reading its caps on the offer-less route", async () => {
     const noOffer = { ...bliss, id: "sfc-backlink", offerId: null, salesFunnelId: "backlink-earned", salesFunnelName: "Backlink earned", units: [] };
-    const noOfferCapsPath = "/v1/brands/b1/sales-funnels/backlink-earned/caps";
+    const noOfferCapsPath = "/v1/brands/b1/sales-funnels/backlink-earned/campaigns/sfc-backlink/caps";
     routeApi({
       "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss, noOffer] },
       [capsPath]: blissCaps,
@@ -339,11 +339,27 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
     expect(called.some((p) => p.includes("/offers/null"))).toBe(false);
   });
 
+  it("reads each campaign's OWN caps when two campaigns share one target (OUTREACH-3WAYS-1121)", async () => {
+    const investors = { ...bliss, id: "sfc-investors", salesFunnelName: "Positive reply", units: [] };
+    const peers = { ...bliss, id: "sfc-peers", salesFunnelName: "Positive reply", units: [] };
+    const own = (id: string) => `/v1/brands/b1/offers/off1/sales-funnels/${encodeURIComponent(bliss.salesFunnelId)}/campaigns/${id}/caps`;
+    routeApi({
+      "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [investors, peers] },
+      [own("sfc-investors")]: { ...blissCaps, maxBudget: null, maxVolume: { count: 20, unit: "first_contacts", period: "daily", consumed: 0, remaining: 20, reached: false, consumedUnavailableReason: null } },
+      [own("sfc-peers")]: { ...blissCaps, maxBudget: null, maxVolume: { count: 10, unit: "first_contacts", period: "daily", consumed: 0, remaining: 10, reached: false, consumedUnavailableReason: null } },
+      [copyPath]: copies({ ...blissCopy, id: "sfc-investors" }, { ...blissCopy, id: "sfc-peers" }),
+    });
+
+    const out = (await handleToolCall("distribute_list_campaigns", { brandId: "b1" })) as { campaigns: Array<Record<string, any>> };
+
+    expect(out.campaigns.map((c) => c.maxVolume?.count)).toEqual([20, 10]);
+  });
+
   it("says a campaign naming no offer with no max budget spends nothing", async () => {
     const noOffer = { ...bliss, id: "sfc-backlink", offerId: null, salesFunnelId: "backlink-earned", salesFunnelName: "Backlink earned", units: [] };
     routeApi({
       "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [noOffer] },
-      "/v1/brands/b1/sales-funnels/backlink-earned/caps": { ...blissCaps, stated: false, maxBudget: null, maxVolume: null },
+      "/v1/brands/b1/sales-funnels/backlink-earned/campaigns/sfc-backlink/caps": { ...blissCaps, stated: false, maxBudget: null, maxVolume: null },
       [copyPath]: copies({ id: "sfc-backlink", type: "proactive", triggerLabel: null, path: { items: [] } }),
     });
 
@@ -357,7 +373,7 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
   // running campaign already does exactly that, each time "Email Pushed Via API" fires.
   it("says what starts a reactive campaign (its trigger) and what it does", async () => {
     const push = { ...bliss, id: "sfc-push", salesFunnelId: "push", salesFunnelName: "Crest", units: [] };
-    const pushCaps = `/v1/brands/b1/offers/off1/sales-funnels/push/caps`;
+    const pushCaps = `/v1/brands/b1/offers/off1/sales-funnels/push/campaigns/sfc-push/caps`;
     routeApi({
       "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss, push] },
       [capsPath]: blissCaps,
