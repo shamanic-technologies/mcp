@@ -302,6 +302,34 @@ describe("distribute_list_campaigns lists campaigns, never their parts", () => {
     expect(out.campaigns[0]!.noBudgetSet).toBe(true);
   });
 
+  it("lists a campaign naming no offer beside one naming an offer, never calling /offers/null", async () => {
+    const noOffer = { ...bliss, id: "sfc-backlink", offerId: null, salesFunnelId: "backlink-earned", salesFunnelName: "Backlink earned", units: [] };
+    routeApi({
+      "/v1/sales-funnel-campaigns": { salesFunnelCampaigns: [bliss, noOffer] },
+      [capsPath]: blissCaps,
+      [copyPath]: copies(blissCopy, { id: "sfc-backlink", type: "proactive", triggerLabel: null, path: { items: [] } }),
+    });
+
+    const out = (await handleToolCall("distribute_list_campaigns", { brandId: "b1" })) as { campaigns: Array<Record<string, any>> };
+
+    expect(out.campaigns).toHaveLength(2);
+    // The campaign naming an offer reads exactly as before.
+    expect(out.campaigns[0]!.budget).toBe("Max $10/day");
+    expect(out.campaigns[0]!.noBudgetSet).toBe(false);
+    expect(out.campaigns[0]!).not.toHaveProperty("capsUnavailableReason");
+    // The one naming no offer shows, its caps said unknown (never "no budget").
+    const c = out.campaigns[1]!;
+    expect(c.id).toBe("sfc-backlink");
+    expect(c.name).toBe("Backlink earned");
+    expect(c.offerId).toBeNull();
+    expect(c.runsWhen).toBe("On its own, within its caps (no trigger)");
+    expect(c.budget).toBeNull();
+    expect(c.maxBudget).toBeNull();
+    expect(c.noBudgetSet).toBeNull();
+    expect(c.capsUnavailableReason).toBe("not available yet for a campaign that names no offer");
+    expect(mockCallApi.mock.calls.map((a) => String(a[0])).some((p) => p.includes("/offers/null"))).toBe(false);
+  });
+
   // MCP role-play 2026-10-14: asked to "send one email I wrote", the agent could not tell from this list that a
   // running campaign already does exactly that, each time "Email Pushed Via API" fires.
   it("says what starts a reactive campaign (its trigger) and what it does", async () => {
@@ -598,6 +626,19 @@ describe("distribute_campaign_stats reads success first", () => {
     expect(text).not.toContain("u-email");
     expect(text).not.toContain("u-apollo");
     expect(text).not.toContain("NOVEMIQ (Positive replies");
+  });
+
+  it("reports a campaign naming no offer like any other", async () => {
+    routeApi({
+      "/v1/sales-funnel-campaigns/sfc-backlink": { salesFunnelCampaign: { ...bliss, id: "sfc-backlink", offerId: null, salesFunnelName: "Backlink earned", units: [bliss.units[0]] } },
+      "/v1/public/channels": catalogue,
+      "/v1/campaigns/u-email/stats": stats(),
+    });
+
+    const out = (await handleToolCall("distribute_campaign_stats", { campaignId: "sfc-backlink" })) as Record<string, any>;
+
+    expect(out.campaign).toEqual({ id: "sfc-backlink", name: "Backlink earned", status: "ongoing", brandId: "b1", offerId: null });
+    expect(out.results).toHaveLength(1);
   });
 
   // MCP role-play 2026-10-14: every other tool and the API say `campaignId`; the agent's first call here failed each time.
