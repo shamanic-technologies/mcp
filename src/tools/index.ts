@@ -605,7 +605,7 @@ export const toolDefinitions = {
       method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).describe("HTTP method of the operation."),
       path: z.string().describe("Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."),
       query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}."),
-      body: z.unknown().optional().describe("JSON body for POST, PUT and PATCH."),
+      body: z.unknown().optional().describe("JSON body for POST, PUT and PATCH, as an object (a JSON-encoded string of an object is read as that object)."),
       ...targetShape,
     }),
   },
@@ -2217,7 +2217,33 @@ function describeAnswers(op: CatalogOperation, components: Record<string, unknow
 /** Above this, a response is not handed back whole: an assistant's context is not a file system. */
 export const MAX_RESULT_CHARS = 200_000;
 
-async function handleCallApi(args: Record<string, unknown>) {
+/**
+ * The body a model hands over, as the JSON the route reads. Models often pass `body` as a
+ * JSON-encoded STRING (`"{\"audience\": ...}"`); sent as-is it was stringified twice and the
+ * gateway refused it unparsed (2026-11-22, an agent read that as "the writer is broken" and told
+ * a client so). A string holding a JSON object or array is that JSON; any other string is
+ * refused here, named, before anything reaches the gateway.
+ */
+export function jsonBody(body: unknown): unknown {
+  if (typeof body !== "string") return body;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    parsed = undefined;
+  }
+  if (parsed !== null && typeof parsed === "object") return parsed;
+  throw new Error(
+    JSON.stringify({
+      error: "body_not_json",
+      message: `body is a string that is not a JSON object or array (starts: ${JSON.stringify(body.slice(0, 80))}).`,
+      fix: "Pass body as a JSON object, e.g. {\"brandId\": \"...\"}; distribute_describe_api lists the fields it takes.",
+    }),
+  );
+}
+
+async function handleCallApi(rawArgs: Record<string, unknown>) {
+  const args = rawArgs.body === undefined ? rawArgs : { ...rawArgs, body: jsonBody(rawArgs.body) };
   const method = String(args.method).toUpperCase() as HttpMethod;
   const rawPath = String(args.path ?? "").trim();
   if (!rawPath.startsWith("/")) throw new Error(`path must start with "/" (got: ${rawPath || "nothing"}), e.g. /v1/emails`);
