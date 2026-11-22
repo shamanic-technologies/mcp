@@ -301,6 +301,22 @@ describe("distribute_call_api", () => {
     expect(res).toEqual({ operation: "PATCH /v1/brands/{brandId}/daily-budget", status: 200, data: { ok: true } });
   });
 
+  it("a body handed over as a JSON-encoded string reaches the gateway as that JSON; an object is unchanged", async () => {
+    mockCallApi.mockResolvedValue({ data: { ok: true }, status: 200 });
+    await handleToolCall("distribute_call_api", { method: "PATCH", path: "/v1/brands/b1/daily-budget", body: JSON.stringify({ a: 1 }) });
+    expect(mockCallApi).toHaveBeenLastCalledWith("/v1/brands/b1/daily-budget", expect.objectContaining({ body: { a: 1 } }));
+    await handleToolCall("distribute_call_api", { method: "PATCH", path: "/v1/brands/b1/daily-budget", body: { a: 1 } });
+    expect(mockCallApi).toHaveBeenLastCalledWith("/v1/brands/b1/daily-budget", expect.objectContaining({ body: { a: 1 } }));
+  });
+
+  it("a body string that is not a JSON object is refused, named, before the gateway", async () => {
+    mockCallApi.mockClear();
+    for (const body of ["audience: CTOs", "\"just text\"", "42"]) {
+      await expect(handleToolCall("distribute_call_api", { method: "PATCH", path: "/v1/brands/b1/daily-budget", body })).rejects.toThrow(/body_not_json/);
+    }
+    expect(mockCallApi).not.toHaveBeenCalled();
+  });
+
   it("merges an inline query string with `query` and adds the brand target", async () => {
     mockCallApi.mockResolvedValue({ data: { emails: [] }, status: 200 });
     await handleToolCall("distribute_call_api", { method: "GET", path: "/v1/emails?limit=5", query: { offset: 10 }, brandId: "b1" });
