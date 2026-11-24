@@ -294,8 +294,8 @@ const SYNONYMS: Record<string, string[]> = {
   money: ["billing", "revenue"],
   invoice: ["billing", "payment"],
   spend: ["cost", "billing"],
-  // A campaign IS a sales funnel campaign, and its money is its caps (a max budget and/or a max
-  // volume per period): today's words for it land on the funnel and its caps.
+  // A campaign IS a sales funnel campaign, and its money is its caps (a max budget per period, a
+  // max volume only beside one): today's words for it land on the funnel and its caps.
   campaign: ["funnel"],
   budget: ["budget", "cap"],
   max: ["cap"],
