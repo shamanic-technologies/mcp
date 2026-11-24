@@ -285,8 +285,8 @@ export const toolDefinitions = {
     description:
       "List the campaigns of one brand or organization. A campaign is one sales funnel run for a brand, for one of its offers or for none (`offerId` null), started or paused as a whole. Each campaign has a name, a status (`ongoing` = running, `stopped` = paused), " +
       "a type (`proactive`: it reaches out to new people on its own; `reactive`: it acts when something happens, such as a reply), " +
-      "and its caps: a max budget and/or a max volume per period, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. " +
-      "A campaign with no max budget spends nothing. Each campaign has its OWN caps, even when two share one target: set them with PUT /v1/brands/{brandId}/offers/{offerId}/sales-funnels/{salesFunnelId}/campaigns/{salesFunnelCampaignId}/caps (no offer: drop /offers/{offerId}). Several campaigns on one target: each POST /v1/sales-funnel-campaigns with its own brief makes its own campaign (the same brief hands that campaign back). Report each campaign by its name. " +
+      "and its caps: a max budget per period, and a max volume beside it if wanted, in words in `budget` and `volume` (\"Max $10/day\", \"Up to 50 leads handled/week\"), with what the current period used in `maxBudget` and `maxVolume`. " +
+      "A campaign with no max budget spends nothing. A max volume always comes with a max budget in $ (writing a volume alone is refused, `max_budget_required_with_max_volume`): ask the person for both. Each campaign has its OWN caps, even when two share one target: set them with PUT /v1/brands/{brandId}/offers/{offerId}/sales-funnels/{salesFunnelId}/campaigns/{salesFunnelCampaignId}/caps (no offer: drop /offers/{offerId}). Several campaigns on one target: each POST /v1/sales-funnel-campaigns with its own brief makes its own campaign (the same brief hands that campaign back). Report each campaign by its name. " +
       "Each campaign also says what starts it, in `runsWhen` (\"Each time: Email Pushed Via API\" for a reactive campaign, with its `trigger` {slug, name}; " +
       "\"On its own, within its caps (no trigger)\" for a proactive one), and what it does, in `path` (its steps in order, e.g. \"Lead → Sales Cold Email Outreach → Positive reply → Paid client\"; the outcome names are the platform's own, read as served). " +
       "A campaign can also run parts beside its path, each in `otherParts` with its own `runsWhen`, `path` and `description` " +
@@ -918,6 +918,30 @@ function refuseNotCallable(trigger: CatalogueTrigger, triggers: CatalogueTrigger
   );
 }
 
+/**
+ * VOL-NEEDS-USD-1124 (owner 2026-11-24, « ajoute aussi un max en $ »): a campaign that states a max volume ALSO
+ * states a max budget in $, as a safety. A volume our billing cannot count (a campaign capped at "1 new person a day")
+ * spent $8.12 in one morning with nothing to stop it; the $ ceiling is what stops spend then. A max $ alone stays valid.
+ * Keyed on the body, never on a path: every write naming caps (the caps PUT, a campaign create or edit) is held to it.
+ * The $ is the person's or the agent's own figure: refused here, never defaulted.
+ */
+function refuseVolumeWithoutBudget(body: unknown, op: { method: string; path: string }): void {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return;
+  const b = body as { maxVolume?: unknown; maxBudget?: unknown };
+  const statesVolume = b.maxVolume !== undefined && b.maxVolume !== null;
+  const statesBudget = b.maxBudget !== undefined && b.maxBudget !== null;
+  if (!statesVolume || statesBudget) return;
+  throw new Error(
+    JSON.stringify({
+      error: "max_budget_required_with_max_volume",
+      operation: `${op.method} ${op.path}`,
+      message:
+        "A max volume needs a max budget in $ beside it: state `maxBudget` {amountCents, period} in the same body (a max budget alone is fine). Nothing was sent.",
+      fix: "Ask the person for the most this campaign may spend per period (e.g. \"Max $10/day\"), then call again with both maxBudget and maxVolume. Acting with no person behind you, choose the ceiling yourself and say it; never send a volume alone.",
+    }),
+  );
+}
+
 async function handleListWorkflows(args: Record<string, unknown>) {
   // The gateway filters on humanId, featureSlug, featureDynastySlug, workflowSlug
   // and workflowDynastySlug — there is no category filter, so one sent here was
@@ -956,7 +980,7 @@ async function handleListWorkflows(args: Record<string, unknown>) {
 
 /**
  * A CAMPAIGN is what the customer launched and pays for (owner 2026-10-10): one brand, an offer or none,
- * one sales funnel, run or paused as one, with a max budget and a max volume. campaign-service
+ * one sales funnel, run or paused as one, with a max budget and, beside it if wanted, a max volume. campaign-service
  * serves it (`/v1/sales-funnel-campaigns`); billing-service serves its limits and what the
  * current period consumed (`/v1/brands/:b/offers/:o/sales-funnels/:id/campaigns/:campaignId/caps`, or
  * `/v1/brands/:b/sales-funnels/:id/campaigns/:campaignId/caps` for a campaign naming no offer).
@@ -2285,6 +2309,9 @@ async function handleCallApi(rawArgs: Record<string, unknown>) {
     const trigger = triggers.find((t) => t.id === triggerId);
     if (trigger && !trigger.callable) refuseNotCallable(trigger, triggers);
   }
+
+  // Any campaign write stating a max volume states a max budget in $ beside it (VOL-NEEDS-USD-1124).
+  if (method !== "GET" && method !== "DELETE") refuseVolumeWithoutBudget(args.body, match.operation);
 
   const params = new URLSearchParams(inlineQuery ?? "");
   const query = (args.query ?? {}) as Record<string, string | number | boolean>;
