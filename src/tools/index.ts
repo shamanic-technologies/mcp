@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getConfigStatus, callApi, type ApiErrorBody } from "../lib/api-client.js";
+import { getConfigStatus, callApi, getApiKey, type ApiErrorBody } from "../lib/api-client.js";
 import { forCustomer, withoutFields, OPEN_FIELDS } from "../lib/redact.js";
 import {
   getCatalog,
@@ -680,6 +680,35 @@ export const toolDefinitions = {
       ...targetShape,
     }),
   },
+  distribute_plan_status: {
+    description:
+      "Read the account's plan: `plan` (free: on the founder's own keys and Claude; trialing: 3-day trial; active: paid monthly; past_due: the last charge was refused), " +
+      "`monthly_amount_cents`, `credit_left_cents`, `debt_cents`, the cycle and trial dates, `out_of_credit` with its reason, whether a campaign may launch on our keys, " +
+      "`upgrade_url` and `next_step` (the one call that gives the account more room). Free. " +
+      "Paid plan: $99/month = $99 of credit on our keys at cost, every expense billed to the account; more room = +$100/month layers. " +
+      TARGET_HINT,
+    schema: z.object({ ...targetShape }),
+  },
+  distribute_start_plan: {
+    description:
+      "Start the paid plan ($99/month of credit on our keys, at cost). A founder who never had a trial gets 3 days free first: a card is required, a $99 hold is taken on it at once, " +
+      "spend is capped at $10 during the 3 days, and prepaid cards are refused. When no card is saved yet, the answer carries `checkout_url`: give it to the founder to add their card, " +
+      "the plan starts once it is saved (read it back with distribute_plan_status). Say all this to the founder before calling: it puts a hold on their card. " +
+      "Only for an account on the plan or a new one; an account on the older prepaid offer keeps distribute_prepay. " +
+      TARGET_HINT,
+    schema: z.object({
+      return_url: z.string().optional().describe("Page shown after the card is saved (default https://distribute.you)."),
+      ...targetShape,
+    }),
+  },
+  distribute_add_plan_layer: {
+    description:
+      "Add +$100/month to an active plan, charged NOW: the new monthly amount minus the credit left unspent this cycle, and the cycle restarts today. " +
+      "Example: $99 plan, $59 unspent, adds a layer: pays $140 today, holds $199 of credit for a month, next charge $199. " +
+      "Read distribute_plan_status, tell the founder the exact amount and get their yes before calling: it charges their card. " +
+      TARGET_HINT,
+    schema: z.object({ ...targetShape }),
+  },
   distribute_find_api: {
     description:
       "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API " +
@@ -824,6 +853,15 @@ export async function handleToolCall(
 
     case "distribute_llm_work_result":
       return handleLlmWorkResult(args);
+
+    case "distribute_plan_status":
+      return handlePlanStatus(args);
+
+    case "distribute_start_plan":
+      return handleStartPlan(args);
+
+    case "distribute_add_plan_layer":
+      return handleAddPlanLayer(args);
 
     case "distribute_find_api":
       return handleFindApi(args);
@@ -1991,6 +2029,141 @@ async function handlePrepaidStatus(args: Record<string, unknown>) {
 /** billing-service is the ONE home of the prepaid reload rule (RELOAD-RULE-ONE-HOME-1118): read, never restated here. */
 async function handleReloadRules(args: Record<string, unknown>) {
   const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/reload_rules", args));
+  if (result.error) failWhole(result);
+  return result.data;
+}
+
+// --- The solo-founder plan (SOLO-PLAN-1125) -------------------------------------
+// billing-service owns the plan, its amounts, its refusals and the out-of-credit state; the gateway
+// carries its customer routes under SOLO_PLAN_PATH. This server reads them and never recomputes them.
+
+export const SOLO_PLAN_PATH = "/v1/billing/accounts/solo_plan";
+
+export type PlanState = {
+  plan?: string;
+  out_of_credit?: boolean;
+  out_of_credit_reason?: string | null;
+  upgrade_url?: string | null;
+  next_step?: { action?: string; method?: string; path?: string; amount_cents?: number | null } | null;
+  [k: string]: unknown;
+};
+
+/** Tools that never meet the wall: the way in, the way out (pay, or bring their own keys and Claude), and the founder's own Claude answering work. */
+export const WALL_EXEMPT = new Set([
+  "distribute_status",
+  "distribute_list_skills",
+  "distribute_read_skill",
+  "distribute_signup_start",
+  "distribute_signup_complete",
+  "distribute_plan_status",
+  "distribute_start_plan",
+  "distribute_add_plan_layer",
+  "distribute_llm_source",
+  "distribute_set_llm_source",
+  "distribute_set_key",
+  "distribute_llm_work_claim",
+  "distribute_llm_work_result",
+]);
+
+/** The older prepaid offer's tools: an account on the plan is sent to the plan's tools instead. */
+export const PREPAID_TOOLS = new Set([
+  "distribute_prepay",
+  "distribute_prepaid_status",
+  "distribute_reload_rules",
+  "distribute_set_reload_amount",
+]);
+
+/** The fixed notice, per reason billing states. No model writes it. */
+export const OUT_OF_CREDIT_TEXT: Record<string, string> = {
+  paid_plan_required: "This needs the paid plan: $99/month of credit on our keys, with 3 days free to start.",
+  debt_limit_reached: "This account has used the $2 we accept to advance on our keys. Start the paid plan to go on, or run everything on your own keys and Claude.",
+  trial_cap_reached: "The trial's $10 is used. Start the paid month now to go on.",
+  credit_used_up: "This month's credit is used. Add +$100/month to go on.",
+  payment_failed: "The last payment was refused. Update the card to go on.",
+};
+
+/** One read per key, target and minute: the wall must not cost a billing call on every tool call. */
+const PLAN_CACHE_MS = 60_000;
+const planCache = new Map<string, { at: number; state: PlanState | null }>();
+
+/** The plan state, or null for an account that is not on the plan (404) or when billing cannot be read now (billing still refuses at spend). */
+export async function readPlan(args: Record<string, unknown>): Promise<PlanState | null> {
+  const key = `${getApiKey() ?? ""}|${withTarget("", args)}`;
+  const hit = planCache.get(key);
+  if (hit && Date.now() - hit.at < PLAN_CACHE_MS) return hit.state;
+  const result = await callApi<PlanState>(withTarget(SOLO_PLAN_PATH, args));
+  if (result.error) {
+    if (result.status === 404) planCache.set(key, { at: Date.now(), state: null });
+    else console.warn(`[plan-wall] plan read failed (${result.status ?? "no status"}): the tool runs, billing refuses at spend`);
+    return null;
+  }
+  const state = result.data as PlanState;
+  planCache.set(key, { at: Date.now(), state });
+  return state;
+}
+
+export function clearPlanCache() {
+  planCache.clear();
+}
+
+/** The fixed out-of-credit answer: what is blocked, why, and the one way on. */
+export function outOfCreditAnswer(state: PlanState) {
+  const reason = state.out_of_credit_reason ?? "paid_plan_required";
+  return {
+    status: "out_of_credit",
+    reason,
+    message: OUT_OF_CREDIT_TEXT[reason] ?? OUT_OF_CREDIT_TEXT.paid_plan_required,
+    upgradeUrl: state.upgrade_url ?? null,
+    nextStep: state.next_step ?? null,
+    next: "Tell the founder this message as is, with the upgrade link. distribute_start_plan or distribute_add_plan_layer does it from here; distribute_plan_status shows the plan.",
+  };
+}
+
+/**
+ * Before a tool runs: an account on the plan that is out of credit gets the fixed notice, and the older
+ * prepaid tools send an account on the plan to the plan's tools. Accounts not on the plan: nothing changes.
+ */
+export async function planWall(name: string, args: Record<string, unknown>): Promise<unknown | null> {
+  if (WALL_EXEMPT.has(name) || !getConfigStatus().configured) return null;
+  const state = await readPlan(args);
+  if (!state) return null;
+  if (PREPAID_TOOLS.has(name)) {
+    return {
+      status: "on_plan",
+      plan: state.plan ?? null,
+      message: "This account is on the monthly plan, not the prepaid offer.",
+      next: "Use distribute_plan_status to read it, distribute_start_plan to start it, distribute_add_plan_layer for +$100/month.",
+    };
+  }
+  if (state.out_of_credit === true) return outOfCreditAnswer(state);
+  return null;
+}
+
+async function handlePlanStatus(args: Record<string, unknown>) {
+  const result = await callApi<PlanState>(withTarget(SOLO_PLAN_PATH, args));
+  if (result.error) failWhole(result);
+  const state = result.data as PlanState;
+  return state.out_of_credit === true ? { ...state, notice: outOfCreditAnswer(state) } : state;
+}
+
+async function handleStartPlan(args: Record<string, unknown>) {
+  const body = { return_url: typeof args.return_url === "string" && args.return_url ? args.return_url : "https://distribute.you" };
+  const result = await callApi<Record<string, unknown>>(withTarget(`${SOLO_PLAN_PATH}/start`, args), { method: "POST", body });
+  clearPlanCache();
+  if (result.error) failWhole(result);
+  const data = result.data as Record<string, unknown>;
+  return {
+    ...data,
+    next:
+      typeof data.checkout_url === "string"
+        ? "Give `checkout_url` to the founder to add their card. The plan starts once it is saved: read it back with distribute_plan_status."
+        : "Started. distribute_plan_status shows the plan, its credit and the trial's end.",
+  };
+}
+
+async function handleAddPlanLayer(args: Record<string, unknown>) {
+  const result = await callApi<Record<string, unknown>>(withTarget(`${SOLO_PLAN_PATH}/layers`, args), { method: "POST", body: {} });
+  clearPlanCache();
   if (result.error) failWhole(result);
   return result.data;
 }

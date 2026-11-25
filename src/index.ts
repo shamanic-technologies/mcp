@@ -5,7 +5,7 @@ import express, { Request, Response, Express } from "express";
 import cors from "cors";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { toolDefinitions, handleToolCall, mintedKey } from "./tools/index.js";
+import { toolDefinitions, handleToolCall, mintedKey, planWall } from "./tools/index.js";
 import { runWithApiKey, callApi } from "./lib/api-client.js";
 import { SessionKey, newSessionKey, applyHeaderKey, noteKeyRefused, adoptMintedKey } from "./lib/session-key.js";
 import { discoveryDocument, notFoundDocument, publicOrigin, SERVER_NAME, SERVER_VERSION } from "./discovery.js";
@@ -129,7 +129,8 @@ app.post("/mcp", async (req: Request, res: Response) => {
             const session = sessions.get(sessionId!);
             const result = await runWithApiKey(
               session?.apiKey ?? null,
-              () => handleToolCall(name, args),
+              // An account on the solo plan that is out of credit gets the fixed notice first (SOLO-PLAN-1125).
+              async () => (await planWall(name, args)) ?? handleToolCall(name, args),
               name,
               (key) => session && noteKeyRefused(session, key),
             );

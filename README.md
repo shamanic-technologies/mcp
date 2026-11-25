@@ -53,7 +53,7 @@ Call `distribute_status` first — it confirms the key reached the gateway, list
 
 ## Tools
 
-There are **36 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
+There are **39 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
 
 **Same scope as the API.** Whatever your key can do on `https://api.distribute.you/v1/*`, it can do from here, and nothing more: the API decides on every call what the key may read or write, and this server never widens or narrows it. Our own internals (prompt text, models, token counts, generation costs, the internal service registry) never come back through it.
 
@@ -67,6 +67,16 @@ Get a key and pay, no human needed (the two signup tools work with no key):
 | `distribute_prepaid_status` | Prepaid state, balance, auto top-up and card |
 | `distribute_reload_rules` | Billing's minimums and default reload amount |
 | `distribute_set_reload_amount` | Change what each automatic reload adds, with no payment (0 turns it off) |
+
+The monthly plan ($99/month of credit on our keys at cost, 3 days free first, +$100/month layers):
+
+| Tool | What it does |
+|---|---|
+| `distribute_plan_status` | The plan: free / trialing / active / past due, credit left, debt, cycle and trial dates, whether a campaign may launch on our keys, the upgrade link |
+| `distribute_start_plan` | Start it: a card page link when no card is saved; a $99 hold and a 3-day trial capped at $10 for a first trial |
+| `distribute_add_plan_layer` | +$100/month, charged now (new amount minus the credit unspent this cycle; the cycle restarts today) |
+
+An account on the plan that is out of credit gets one fixed notice from every other tool, with the upgrade link (written by no model). The prepaid tools send an account on the plan to these three; accounts on the prepaid offer keep them unchanged.
 
 Who runs the AI work (writing, judging replies, the conversation), free path included:
 

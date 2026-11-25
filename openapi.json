@@ -1150,6 +1150,79 @@
           "$schema": "http://json-schema.org/draft-07/schema#"
         }
       },
+      "distribute_plan_status": {
+        "description": "Read the account's plan: `plan` (free: on the founder's own keys and Claude; trialing: 3-day trial; active: paid monthly; past_due: the last charge was refused), `monthly_amount_cents`, `credit_left_cents`, `debt_cents`, the cycle and trial dates, `out_of_credit` with its reason, whether a campaign may launch on our keys, `upgrade_url` and `next_step` (the one call that gives the account more room). Free. Paid plan: $99/month = $99 of credit on our keys at cost, every expense billed to the account; more room = +$100/month layers. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_plan_status",
+          "definitions": {
+            "distribute_plan_status": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_start_plan": {
+        "description": "Start the paid plan ($99/month of credit on our keys, at cost). A founder who never had a trial gets 3 days free first: a card is required, a $99 hold is taken on it at once, spend is capped at $10 during the 3 days, and prepaid cards are refused. When no card is saved yet, the answer carries `checkout_url`: give it to the founder to add their card, the plan starts once it is saved (read it back with distribute_plan_status). Say all this to the founder before calling: it puts a hold on their card. Only for an account on the plan or a new one; an account on the older prepaid offer keeps distribute_prepay. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_start_plan",
+          "definitions": {
+            "distribute_start_plan": {
+              "type": "object",
+              "properties": {
+                "return_url": {
+                  "description": "Page shown after the card is saved (default https://distribute.you).",
+                  "type": "string"
+                },
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_add_plan_layer": {
+        "description": "Add +$100/month to an active plan, charged NOW: the new monthly amount minus the credit left unspent this cycle, and the cycle restarts today. Example: $99 plan, $59 unspent, adds a layer: pays $140 today, holds $199 of credit for a month, next charge $199. Read distribute_plan_status, tell the founder the exact amount and get their yes before calling: it charges their card. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_add_plan_layer",
+          "definitions": {
+            "distribute_add_plan_layer": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
       "distribute_find_api": {
         "description": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has. To list the triggers (and which ones a call may fire), use distribute_list_triggers.",
         "inputSchema": {
@@ -3641,6 +3714,184 @@
                   "leaseId",
                   "ok"
                 ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_plan_status": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Read the account's plan: `plan` (free: on the founder's own keys and Claude; trialing: 3-day trial; active: paid monthly; past_due: the last charge was refused), `monthly_amount_cents`, `credit_left_cents`, `debt_cents`, the cycle and trial dates, `out_of_credit` with its reason, whether a campaign may launch on our keys, `upgrade_url` and `next_step` (the one call that gives the account more room). Free. Paid plan: $99/month = $99 of credit on our keys at cost, every expense billed to the account; more room = +$100/month layers. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_plan_status. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_plan_status\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_start_plan": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Start the paid plan ($99/month of credit on our keys, at cost). A founder who never had a trial gets 3 days free first: a card is required, a $99 hold is taken on it at once, spend is capped at $10 during the 3 days, and prepaid cards are refused. When no card is saved yet, the answer carries `checkout_url`: give it to the founder to add their card, the plan starts once it is saved (read it back with distribute_plan_status). Say all this to the founder before calling: it puts a hold on their card. Only for an account on the plan or a new one; an account on the older prepaid offer keeps distribute_prepay. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_start_plan. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_start_plan\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "return_url": {
+                    "description": "Page shown after the card is saved (default https://distribute.you).",
+                    "type": "string"
+                  },
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_add_plan_layer": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Add +$100/month to an active plan, charged NOW: the new monthly amount minus the credit left unspent this cycle, and the cycle restarts today. Example: $99 plan, $59 unspent, adds a layer: pays $140 today, holds $199 of credit for a month, next charge $199. Read distribute_plan_status, tell the founder the exact amount and get their yes before calling: it charges their card. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_add_plan_layer. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_add_plan_layer\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
                 "additionalProperties": false
               }
             }
