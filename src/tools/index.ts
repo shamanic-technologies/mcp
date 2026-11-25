@@ -624,6 +624,7 @@ export const toolDefinitions = {
   distribute_set_llm_source: {
     description:
       "Choose who runs the organization's AI work, for every campaign and the conversation at once. " +
+      "On a new account, set it FIRST, before creating the brand or anything else: every AI step from then on (reading the site, drafting offers, writing emails) runs on the chosen source. " +
       "`claude_subscription`: the founder's own Claude plan does it, $0 to them. The work waits in a queue; their Claude takes it and hands the answers back with distribute_llm_work_claim and distribute_llm_work_result. " +
       "The answer carries `routine`: create that hourly routine (scheduled task) right away in the app you run in, with its prompt as given, so the work is done while nobody is chatting. " +
       "`own_key`: their own provider key (default provider `anthropic`), set first with distribute_set_key. `ours`: our keys, billed to the account. " +
@@ -654,6 +655,7 @@ export const toolDefinitions = {
       "Then hand each answer back with distribute_llm_work_result (its `id` and `leaseId`, and your own model id as `model`) before `answerBy`. " +
       "An item you cannot do (it needs tools you lack, a schema you cannot meet) goes back with ok false and `error`. " +
       "Call again until `items` is empty. Free: the work runs on your plan, nothing is charged. " +
+      "While you set up an account on `claude_subscription`, call this whenever another call fails or times out: the AI step behind it is waiting here for you. " +
       TARGET_HINT,
     schema: z.object({
       max: z.number().int().min(1).max(10).optional().describe("Most items to take at once (default 5, max 10)."),
@@ -2051,8 +2053,10 @@ async function handleSetLlmSource(args: Record<string, unknown>) {
       pendingCalls: state.pendingCalls ?? null,
       routine: routineFor(args),
       next:
-        "Create `routine` now in the app you run in (say what it does, the founder confirms with one click). " +
-        "Then run its prompt once yourself, so the work already waiting is answered.",
+        "Do this NOW, before anything else: create `routine` in the app you run in (say what it does, the founder confirms with one click). " +
+        "From now on, every AI step of this account (reading the site, drafting offers, writing) waits for this Claude: while you set the account up, " +
+        "a call that fails or times out (a 502, `local_runner_waiting`, `local_runner_timeout`) means work is waiting for you. " +
+        "Take it with distribute_llm_work_claim, answer it, hand it back with distribute_llm_work_result, then retry the call.",
     };
   }
   const provider = source === "own_key" && typeof args.provider === "string" && args.provider.trim() ? args.provider.trim().toLowerCase() : "anthropic";
