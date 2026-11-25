@@ -2323,6 +2323,14 @@ async function handleLlmWorkResult(args: Record<string, unknown>) {
   if (args.structured !== undefined) body.structured = structuredValue(args.structured);
   if (typeof args.error === "string") body.error = args.error.slice(0, 4000);
   const data = await writeJson(withTarget(`/v1/local-llm/work/${encodeURIComponent(id)}/result`, args), "POST", body);
+  if (data.status === "failed") {
+    return {
+      ...data,
+      next:
+        "The answer was stored but NOT used (`status: failed`" + (data.error || data.reason ? ", reason above" : "") + "). Do not retry the same answer in a loop: " +
+        "tell the founder their AI work is refused by distribute.you and quote the reason, then go on with the next item.",
+    };
+  }
   return { ...data, next: "Handed back. Take the next item, or call distribute_llm_work_claim again." };
 }
 
