@@ -636,6 +636,20 @@ export const toolDefinitions = {
       ...targetShape,
     }),
   },
+  distribute_campaign_keys: {
+    description:
+      "Before launching a campaign on the founder's own keys (no paid plan): which provider keys the campaign needs, what each is for, and which the organization already holds (`held`). " +
+      "`ready` true = every step has a way to run with the keys held. `required: false` = one choice among several: another way runs without it. " +
+      "Ask the founder for exactly the missing keys marked `required` (nothing else), save each with distribute_set_key, then read again. " +
+      "`outcome` = the campaign's Target outcome key (e.g. `meeting_booked`), as the campaign was created for; add `campaignId` once it exists. " +
+      "On the paid plan nothing is needed: our keys run it. Free. " +
+      TARGET_HINT,
+    schema: z.object({
+      outcome: z.string().describe("The campaign's Target outcome key, e.g. `meeting_booked`."),
+      campaignId: z.string().optional().describe("The campaign, once created: read the scripts its strategy keeps. Absent = before launch."),
+      ...targetShape,
+    }),
+  },
   distribute_set_key: {
     description:
       "Save the organization's own key for a provider (anthropic, openai, apollo, instantly...), so its campaigns use that key and the provider bills them directly. " +
@@ -844,6 +858,9 @@ export async function handleToolCall(
 
     case "distribute_set_llm_source":
       return handleSetLlmSource(args);
+
+    case "distribute_campaign_keys":
+      return handleCampaignKeys(args);
 
     case "distribute_set_key":
       return handleSetKey(args);
@@ -2268,6 +2285,25 @@ async function handleSetLlmSource(args: Record<string, unknown>) {
       source === "own_key"
         ? `The AI work now runs on the organization's own ${provider} key; ${provider} bills them directly.`
         : "The AI work now runs on our keys, billed to the account at list price.",
+  };
+}
+
+/** workflow-service owns the answer (gateway `GET /v1/engines/{outcome}/required-keys`): read as served, the missing musts named on top. */
+async function handleCampaignKeys(args: Record<string, unknown>) {
+  const outcome = typeof args.outcome === "string" ? args.outcome.trim() : "";
+  if (!outcome) throw new Error(JSON.stringify({ error: "missing_outcome", message: "Send `outcome`: the campaign's Target outcome key, e.g. `meeting_booked`." }));
+  const query = typeof args.campaignId === "string" && args.campaignId ? `?campaignId=${encodeURIComponent(args.campaignId)}` : "";
+  const data = await readJson<{ ready?: boolean; keys?: Array<{ provider: string; held: boolean; required: boolean }> }>(
+    withTarget(`/v1/engines/${encodeURIComponent(outcome)}/required-keys${query}`, args),
+  );
+  const missing = (data.keys ?? []).filter((k) => k.required && !k.held).map((k) => k.provider);
+  return {
+    ...data,
+    missingRequired: missing,
+    next:
+      missing.length === 0
+        ? "Nothing to ask the founder: the keys held let the campaign run."
+        : `Ask the founder for their ${missing.join(", ")} key${missing.length > 1 ? "s" : ""}, save each with distribute_set_key, then read again.`,
   };
 }
 
