@@ -42,6 +42,13 @@ describe("the out-of-credit wall", () => {
     expect(JSON.stringify(out)).not.toMatch(/dashboard/i);
   });
 
+  it("with no upgrade page configured yet, names the tool that returns the card page link", async () => {
+    mockCallApi.mockResolvedValueOnce({ data: state({ out_of_credit: true, out_of_credit_reason: "paid_plan_required", upgrade_url: null }) });
+    const out = (await planWall("distribute_list_leads", {})) as Record<string, any>;
+    expect(out.upgradeUrl).toBeNull();
+    expect(out.next).toContain("distribute_start_plan (it returns the card page link)");
+  });
+
   it("every reason billing names has its fixed text", () => {
     for (const r of ["paid_plan_required", "debt_limit_reached", "trial_cap_reached", "credit_used_up", "payment_failed"]) {
       expect(OUT_OF_CREDIT_TEXT[r]).toBeTruthy();

@@ -2115,7 +2115,10 @@ export function outOfCreditAnswer(state: PlanState) {
     message: OUT_OF_CREDIT_TEXT[reason] ?? OUT_OF_CREDIT_TEXT.paid_plan_required,
     upgradeUrl: state.upgrade_url ?? null,
     nextStep: state.next_step ?? null,
-    next: "Tell the founder this message as is, with the upgrade link. distribute_start_plan or distribute_add_plan_layer does it from here; distribute_plan_status shows the plan.",
+    next:
+      state.upgrade_url
+        ? "Tell the founder this message as is, with the upgrade link. distribute_start_plan or distribute_add_plan_layer does it from here; distribute_plan_status shows the plan."
+        : "Tell the founder this message as is. distribute_start_plan (it returns the card page link) or distribute_add_plan_layer does it from here; distribute_plan_status shows the plan.",
   };
 }
 
