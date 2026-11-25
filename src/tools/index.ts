@@ -153,6 +153,49 @@ export const PEOPLE_TAG_MEANING: Record<(typeof PEOPLE_TAGS)[number], string> = 
 };
 const PEOPLE_TAG_WORDS = PEOPLE_TAGS.map((t) => `\`${t}\` (${PEOPLE_TAG_MEANING[t]})`).join(", ");
 
+/**
+ * Who runs an organization's AI work (SOLO-PLAN-1125). Three words for the founder, each mapped onto what
+ * already exists: chat-service's local-LLM declaration (the founder's own Claude answers a queue) and
+ * key-service's per-provider key source (org's own key or ours). This server stores nothing.
+ */
+export const LLM_SOURCES = ["claude_subscription", "own_key", "ours"] as const;
+export type LlmSource = (typeof LLM_SOURCES)[number];
+
+/** Named on every claim so the org's state shows who took its work. */
+export const ROUTINE_RUNNER = { name: "Claude routine (distribute.you MCP)" };
+
+/**
+ * The routine the founder's Claude creates when they pick their Claude subscription: about once an hour it
+ * takes the waiting work and hands the answers back, inside their own app (never a login token server-side).
+ */
+export function routineFor(args: Record<string, unknown>) {
+  const target =
+    typeof args.orgId === "string" && args.orgId
+      ? ` with orgId ${args.orgId}`
+      : typeof args.brandId === "string" && args.brandId
+        ? ` with brandId ${args.brandId}`
+        : "";
+  return {
+    name: "distribute.you AI work",
+    every: "hour",
+    prompt:
+      `Use the distribute.you connector${target}. Call distribute_llm_work_claim with max 10. ` +
+      "Answer each item yourself: follow its claude.systemPrompt as your instructions and answer its claude.prompt " +
+      "(a JSON value matching claude.jsonSchema when it is not null, else plain text). " +
+      "Hand each answer back with distribute_llm_work_result (id, leaseId, ok true, model = your own model id). " +
+      "Call distribute_llm_work_claim again until items is empty, then stop.",
+    howToCreate: [
+      "Claude Code (Conductor, terminal): create a cloud routine that runs every hour with this prompt (the /schedule command or your routine tool), with the distribute.you connector. " +
+        "Cloud routines only reach claude.ai connectors: if distribute.you is not one yet, the founder adds https://mcp.distribute.you/mcp at claude.ai > Settings > Connectors > Add custom connector, and confirms the email we send (once).",
+      "Claude Desktop or claude.ai: create a scheduled task that runs every hour with this prompt, with the distribute.you connector on.",
+    ],
+    confirmation:
+      "The app shows the routine before creating it: the founder clicks once to confirm. Tell them that click is the last thing to do; after it, the work is answered every hour on their plan.",
+    whileNobodyRuns:
+      "Work waits in the queue for the routine; campaigns go on as soon as it answers. distribute_llm_source shows `pendingCalls` and when a routine last took work.",
+  };
+}
+
 // Tool definitions with Zod schemas
 /** The two things a client's report says (features-service `POST /orgs/unit-reports`). There is no positive kind. */
 export const UNIT_REPORT_KINDS = ["edited", "reported"] as const;
@@ -169,7 +212,7 @@ export const toolDefinitions = {
       "Before writing anything a person will read (a reply to the client, an email, a message, a file), read `client-comms`: how we speak to clients and prospects. " +
       "A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` " +
       "with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. " +
-      "Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+      "Connect by OAuth (add https://mcp.distribute.you/mcp as a custom connector) or with a key from distribute_signup_start, sent as `Authorization: Bearer <key>`.",
     schema: z.object({
       search: z
         .string()
@@ -570,6 +613,73 @@ export const toolDefinitions = {
       unitAt: z.string().optional().describe("When the reported thing was made, ISO time: a message's `sentAt`. Tells which one when a subject holds several (one person, many messages)."),
     }),
   },
+  distribute_llm_source: {
+    description:
+      "Say who runs the organization's AI work (writing emails, judging replies, the conversation with Distry): " +
+      "`claude_subscription` (the founder's own Claude plan answers it, $0 to them), `own_key` (their own provider key, billed by that provider) or `ours` (our keys, billed to the account). " +
+      "Returns `source`, the waiting work (`pendingCalls`), whether a routine took work in the last minute (`runner`), and which provider keys the organization holds (masked). Free. " +
+      TARGET_HINT,
+    schema: z.object({ ...targetShape }),
+  },
+  distribute_set_llm_source: {
+    description:
+      "Choose who runs the organization's AI work, for every campaign and the conversation at once. " +
+      "On a new account, set it FIRST, before creating the brand or anything else: every AI step from then on (reading the site, drafting offers, writing emails) runs on the chosen source. " +
+      "`claude_subscription`: the founder's own Claude plan does it, $0 to them. The work waits in a queue; their Claude takes it and hands the answers back with distribute_llm_work_claim and distribute_llm_work_result. " +
+      "The answer carries `routine`: create that hourly routine (scheduled task) right away in the app you run in, with its prompt as given, so the work is done while nobody is chatting. " +
+      "`own_key`: their own provider key (default provider `anthropic`), set first with distribute_set_key. `ours`: our keys, billed to the account. " +
+      "Never ask for or use a Claude login or session token: only the founder's own Claude, inside their app, answers the work. " +
+      TARGET_HINT,
+    schema: z.object({
+      source: z.enum(LLM_SOURCES).describe("`claude_subscription`, `own_key` or `ours`."),
+      provider: z.string().optional().describe("For `own_key`: the provider of the key (default `anthropic`)."),
+      ...targetShape,
+    }),
+  },
+  distribute_set_key: {
+    description:
+      "Save the organization's own key for a provider (anthropic, openai, apollo, instantly...), so its campaigns use that key and the provider bills them directly. " +
+      "Replaces any key already saved for that provider, and makes the organization use its own key for it. The key is stored encrypted; answers show it masked only. " +
+      "Ask the founder to paste the key; never guess or reuse one. " +
+      TARGET_HINT,
+    schema: z.object({
+      provider: z.string().describe("Provider name, lowercase (e.g. `anthropic`, `openai`, `apollo`)."),
+      apiKey: z.string().describe("The provider key, as the founder pasted it."),
+      ...targetShape,
+    }),
+  },
+  distribute_llm_work_claim: {
+    description:
+      "Take the AI work waiting for this organization's Claude (when its source is `claude_subscription`). Each item is one task to answer YOURSELF, as the model doing the work: " +
+      "follow `claude.systemPrompt` as your instructions and answer `claude.prompt`. When `claude.jsonSchema` is not null, your answer is a JSON value matching it (sent as `structured`); otherwise plain text (sent as `text`). " +
+      "Then hand each answer back with distribute_llm_work_result (its `id` and `leaseId`, and your own model id as `model`) before `answerBy`. " +
+      "An item you cannot do (it needs tools you lack, a schema you cannot meet) goes back with ok false and `error`. " +
+      "Call again until `items` is empty. Free: the work runs on your plan, nothing is charged. " +
+      "While you set up an account on `claude_subscription`, call this whenever another call fails or times out: the AI step behind it is waiting here for you. " +
+      TARGET_HINT,
+    schema: z.object({
+      max: z.number().int().min(1).max(10).optional().describe("Most items to take at once (default 5, max 10)."),
+      waitMs: z.number().int().min(0).max(25_000).optional().describe("Wait up to this long for work when none is waiting (default 0: answer at once)."),
+      ...targetShape,
+    }),
+  },
+  distribute_llm_work_result: {
+    description:
+      "Hand back your answer to one item from distribute_llm_work_claim. Send `id` and `leaseId` from the item, `ok`, your model id as `model` (e.g. `claude-sonnet-5-5`), " +
+      "and `text` (no jsonSchema) or `structured` (a JSON value matching its jsonSchema). With ok false, send `error` in plain words. " +
+      "A 410 means the item expired and nobody waits for it anymore: move on to the next. " +
+      TARGET_HINT,
+    schema: z.object({
+      id: z.string().describe("The item's `id`."),
+      leaseId: z.string().describe("The item's `leaseId`."),
+      ok: z.boolean().describe("true when you answered it."),
+      model: z.string().optional().describe("Your own model id, the one that wrote the answer. Required when ok."),
+      text: z.string().optional().describe("Your answer, for an item with no jsonSchema."),
+      structured: z.unknown().optional().describe("Your answer as a JSON value matching the item's jsonSchema (a JSON-encoded string is read as that value)."),
+      error: z.string().optional().describe("When ok is false: why, in plain words."),
+      ...targetShape,
+    }),
+  },
   distribute_find_api: {
     description:
       "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API " +
@@ -700,6 +810,21 @@ export async function handleToolCall(
     case "distribute_report_not_good":
       return handleReportNotGood(args);
 
+    case "distribute_llm_source":
+      return handleLlmSource(args);
+
+    case "distribute_set_llm_source":
+      return handleSetLlmSource(args);
+
+    case "distribute_set_key":
+      return handleSetKey(args);
+
+    case "distribute_llm_work_claim":
+      return handleLlmWorkClaim(args);
+
+    case "distribute_llm_work_result":
+      return handleLlmWorkResult(args);
+
     case "distribute_find_api":
       return handleFindApi(args);
 
@@ -724,7 +849,7 @@ const SIGNUP_INSTRUCTIONS = [
   "2. Call distribute_signup_complete with that email and code. It returns an API key, and this session uses it right away.",
   "3. Reading the account is free. To spend, prepay with distribute_prepay (minimums at distribute_reload_rules, auto top-up required) and pay at the url it returns.",
   "Already have a key? Send it as the header Authorization: Bearer <your key> (in an MCP client, put that header in this server's configuration and reconnect). " +
-    "A person can also create one at https://dashboard.distribute.you (organization, then API Key).",
+    "Or add https://mcp.distribute.you/mcp as a custom connector in claude.ai, ChatGPT or Claude Desktop: the app connects by OAuth, the person confirms once by email.",
 ];
 
 async function handleStatus(args: Record<string, unknown> = {}) {
@@ -753,7 +878,7 @@ async function handleStatus(args: Record<string, unknown> = {}) {
       hint:
         "The API refused this key. A revoked, deleted, mistyped or placeholder key (distrib.usr_YOUR_KEY) all look the same from here. " +
         "No working key? " + NO_HUMAN_NEEDED + " Follow `instructions`: this session switches to the new key right away. " +
-        "Have a real key? Check it at https://dashboard.distribute.you (organization, then API Key) and send it as `Authorization: Bearer <key>`.",
+        "Have a real key? Send it as `Authorization: Bearer <key>`. Connected as a custom connector? Remove it and add it again: the app connects by OAuth with a fresh key.",
       instructions: SIGNUP_INSTRUCTIONS,
     };
   }
@@ -1868,6 +1993,153 @@ async function handleReloadRules(args: Record<string, unknown>) {
   const result = await callApi<Record<string, unknown>>(withTarget("/v1/billing/accounts/reload_rules", args));
   if (result.error) failWhole(result);
   return result.data;
+}
+
+// --- Who runs the AI work (SOLO-PLAN-1125) -------------------------------------
+// chat-service owns the declaration and the queue (GET/PUT /v1/local-llm, work claim + result);
+// key-service owns the org's own keys and, per provider, which key is used (/v1/keys, /v1/keys/{p}/source).
+// Each answer here is read from them; nothing is decided or stored in this server.
+
+type OrgKey = { provider: string; maskedKey: string };
+type KeySource = { provider: string; keySource: "org" | "platform" };
+
+async function readJson<T>(path: string): Promise<T> {
+  const result = await callApi<T>(path);
+  if (result.error) failWhole(result);
+  return result.data as T;
+}
+
+/** The source as the founder says it: their Claude when declared, else their own Anthropic key when used, else ours. */
+export function llmSourceOf(declared: boolean, sources: KeySource[]): LlmSource {
+  if (declared) return "claude_subscription";
+  return sources.some((s) => s.provider === "anthropic" && s.keySource === "org") ? "own_key" : "ours";
+}
+
+async function handleLlmSource(args: Record<string, unknown>) {
+  const [state, sources, keys] = await Promise.all([
+    readJson<Record<string, unknown>>(withTarget("/v1/local-llm", args)),
+    readJson<{ sources: KeySource[] }>(withTarget("/v1/keys/sources", args)),
+    readJson<{ keys: OrgKey[] }>(withTarget("/v1/keys", args)),
+  ]);
+  const declared = state.declared === true;
+  return {
+    source: llmSourceOf(declared, sources.sources ?? []),
+    pendingCalls: state.pendingCalls ?? null,
+    runner: state.runner ?? null,
+    usageLast30Days: state.usageLast30Days ?? null,
+    keySources: sources.sources ?? [],
+    keys: (keys.keys ?? []).map((k) => ({ provider: k.provider, maskedKey: k.maskedKey })),
+    ...(declared ? { routine: routineFor(args) } : {}),
+  };
+}
+
+/** The only writes of the AI-work tools: the declaration, the org's own keys and the work queue (gateway-contract test lists them). */
+type LlmWriteVerb = "PUT" | "POST";
+async function writeJson(path: string, verb: LlmWriteVerb, body: unknown) {
+  const result = await callApi<Record<string, unknown>>(path, { method: verb, body });
+  if (result.error) failWhole(result);
+  return result.data as Record<string, unknown>;
+}
+
+async function handleSetLlmSource(args: Record<string, unknown>) {
+  const source = args.source as LlmSource;
+  if (!LLM_SOURCES.includes(source)) {
+    throw new Error(JSON.stringify({ error: "unknown_source", message: `source must be one of ${LLM_SOURCES.join(", ")}.` }));
+  }
+  if (source === "claude_subscription") {
+    const state = await writeJson(withTarget("/v1/local-llm", args), "PUT", { enabled: true });
+    return {
+      source,
+      pendingCalls: state.pendingCalls ?? null,
+      routine: routineFor(args),
+      next:
+        "Do this NOW, before anything else: create `routine` in the app you run in (say what it does, the founder confirms with one click). " +
+        "From now on, every AI step of this account (reading the site, drafting offers, writing) waits for this Claude: while you set the account up, " +
+        "a call that fails or times out (a 502, `local_runner_waiting`, `local_runner_timeout`) means work is waiting for you. " +
+        "Take it with distribute_llm_work_claim, answer it, hand it back with distribute_llm_work_result, then retry the call.",
+    };
+  }
+  const provider = source === "own_key" && typeof args.provider === "string" && args.provider.trim() ? args.provider.trim().toLowerCase() : "anthropic";
+  if (source === "own_key") {
+    const keys = await readJson<{ keys: OrgKey[] }>(withTarget("/v1/keys", args));
+    if (!(keys.keys ?? []).some((k) => k.provider === provider)) {
+      throw new Error(
+        JSON.stringify({
+          error: "key_missing",
+          provider,
+          message: `The organization has no ${provider} key yet.`,
+          fix: `Ask the founder for their ${provider} key and save it with distribute_set_key, then call distribute_set_llm_source again.`,
+        }),
+      );
+    }
+  }
+  await writeJson(withTarget("/v1/local-llm", args), "PUT", { enabled: false });
+  await writeJson(withTarget(`/v1/keys/${encodeURIComponent(provider)}/source`, args), "PUT", {
+    keySource: source === "own_key" ? "org" : "platform",
+  });
+  return {
+    source,
+    provider,
+    next:
+      source === "own_key"
+        ? `The AI work now runs on the organization's own ${provider} key; ${provider} bills them directly.`
+        : "The AI work now runs on our keys, billed to the account at list price.",
+  };
+}
+
+async function handleSetKey(args: Record<string, unknown>) {
+  const provider = typeof args.provider === "string" ? args.provider.trim().toLowerCase() : "";
+  const apiKey = typeof args.apiKey === "string" ? args.apiKey.trim() : "";
+  if (!provider || !apiKey) {
+    throw new Error(JSON.stringify({ error: "missing_field", message: "Send both `provider` and `apiKey`." }));
+  }
+  const saved = await writeJson(withTarget("/v1/keys", args), "POST", { provider, apiKey });
+  await writeJson(withTarget(`/v1/keys/${encodeURIComponent(provider)}/source`, args), "PUT", { keySource: "org" });
+  return {
+    provider,
+    maskedKey: saved.maskedKey ?? null,
+    keySource: "org",
+    next: `Saved. The organization's work that calls ${provider} now uses this key.`,
+  };
+}
+
+async function handleLlmWorkClaim(args: Record<string, unknown>) {
+  const body = {
+    max: typeof args.max === "number" ? args.max : 5,
+    waitMs: typeof args.waitMs === "number" ? args.waitMs : 0,
+    runner: ROUTINE_RUNNER,
+  };
+  const data = await writeJson(withTarget("/v1/local-llm/work/claim", args), "POST", body);
+  const items = Array.isArray(data.items) ? data.items : [];
+  return {
+    items,
+    next:
+      items.length === 0
+        ? "No work is waiting. Stop here."
+        : "Answer each item yourself (claude.systemPrompt = your instructions, claude.prompt = the task; a JSON value matching claude.jsonSchema when not null, else text), " +
+          "hand each back with distribute_llm_work_result, then call distribute_llm_work_claim again.",
+  };
+}
+
+/** A structured answer handed over as a JSON-encoded string is read as that JSON; any other string stays a string. */
+export function structuredValue(v: unknown): unknown {
+  if (typeof v !== "string") return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
+}
+
+async function handleLlmWorkResult(args: Record<string, unknown>) {
+  const id = idArg(args, "id", "item_id");
+  const body: Record<string, unknown> = { leaseId: args.leaseId, ok: args.ok === true };
+  if (typeof args.model === "string") body.model = args.model;
+  if (typeof args.text === "string") body.text = args.text;
+  if (args.structured !== undefined) body.structured = structuredValue(args.structured);
+  if (typeof args.error === "string") body.error = args.error.slice(0, 4000);
+  const data = await writeJson(withTarget(`/v1/local-llm/work/${encodeURIComponent(id)}/result`, args), "POST", body);
+  return { ...data, next: "Handed back. Take the next item, or call distribute_llm_work_claim again." };
 }
 
 /** Only the reload amount: billing changes it with no payment, refuses less than its minimum, and 0 turns automatic reload off (RELOAD-ZERO-OFF-1118). */

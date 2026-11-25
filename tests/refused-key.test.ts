@@ -55,7 +55,8 @@ describe("a session opened with a placeholder key", () => {
     expect(said).toContain("distribute_signup_start");
     expect(said).toContain("distribute_signup_complete");
     expect(out.hint).toContain("No human needed");
-    expect(out.hint).toContain("dashboard.distribute.you");
+    expect(out.hint).toContain("custom connector");
+    expect(out.hint).not.toContain("dashboard.distribute.you");
   });
 
   it("after signup_complete, distribute_status reports the new account, though the client still sends the placeholder", async () => {

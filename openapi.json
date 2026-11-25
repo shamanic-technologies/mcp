@@ -25,7 +25,7 @@
     },
     "schemas": {
       "distribute_status": {
-        "description": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Then, before acting on or answering what the client asks (a question about results, set something up, change how a campaign behaves, launch, attach files, caps...), read the method: distribute_list_skills, then distribute_read_skill on `index` and on every skill whose description matches the ask. They are the steps our own Copilot follows; an API route alone rarely is the whole setup. Before writing anything a person will read (a reply to the client, an email, a message, a file), read `client-comms`: how we speak to clients and prospects. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+        "description": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Then, before acting on or answering what the client asks (a question about results, set something up, change how a campaign behaves, launch, attach files, caps...), read the method: distribute_list_skills, then distribute_read_skill on `index` and on every skill whose description matches the ask. They are the steps our own Copilot follows; an API route alone rarely is the whole setup. Before writing anything a person will read (a reply to the client, an email, a message, a file), read `client-comms`: how we speak to clients and prospects. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Connect by OAuth (add https://mcp.distribute.you/mcp as a custom connector) or with a key from distribute_signup_start, sent as `Authorization: Bearer <key>`.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_status",
           "definitions": {
@@ -963,6 +963,193 @@
           "$schema": "http://json-schema.org/draft-07/schema#"
         }
       },
+      "distribute_llm_source": {
+        "description": "Say who runs the organization's AI work (writing emails, judging replies, the conversation with Distry): `claude_subscription` (the founder's own Claude plan answers it, $0 to them), `own_key` (their own provider key, billed by that provider) or `ours` (our keys, billed to the account). Returns `source`, the waiting work (`pendingCalls`), whether a routine took work in the last minute (`runner`), and which provider keys the organization holds (masked). Free. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_llm_source",
+          "definitions": {
+            "distribute_llm_source": {
+              "type": "object",
+              "properties": {
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_set_llm_source": {
+        "description": "Choose who runs the organization's AI work, for every campaign and the conversation at once. On a new account, set it FIRST, before creating the brand or anything else: every AI step from then on (reading the site, drafting offers, writing emails) runs on the chosen source. `claude_subscription`: the founder's own Claude plan does it, $0 to them. The work waits in a queue; their Claude takes it and hands the answers back with distribute_llm_work_claim and distribute_llm_work_result. The answer carries `routine`: create that hourly routine (scheduled task) right away in the app you run in, with its prompt as given, so the work is done while nobody is chatting. `own_key`: their own provider key (default provider `anthropic`), set first with distribute_set_key. `ours`: our keys, billed to the account. Never ask for or use a Claude login or session token: only the founder's own Claude, inside their app, answers the work. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_set_llm_source",
+          "definitions": {
+            "distribute_set_llm_source": {
+              "type": "object",
+              "properties": {
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "claude_subscription",
+                    "own_key",
+                    "ours"
+                  ],
+                  "description": "`claude_subscription`, `own_key` or `ours`."
+                },
+                "provider": {
+                  "description": "For `own_key`: the provider of the key (default `anthropic`).",
+                  "type": "string"
+                },
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "source"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_set_key": {
+        "description": "Save the organization's own key for a provider (anthropic, openai, apollo, instantly...), so its campaigns use that key and the provider bills them directly. Replaces any key already saved for that provider, and makes the organization use its own key for it. The key is stored encrypted; answers show it masked only. Ask the founder to paste the key; never guess or reuse one. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_set_key",
+          "definitions": {
+            "distribute_set_key": {
+              "type": "object",
+              "properties": {
+                "provider": {
+                  "type": "string",
+                  "description": "Provider name, lowercase (e.g. `anthropic`, `openai`, `apollo`)."
+                },
+                "apiKey": {
+                  "type": "string",
+                  "description": "The provider key, as the founder pasted it."
+                },
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "apiKey"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_llm_work_claim": {
+        "description": "Take the AI work waiting for this organization's Claude (when its source is `claude_subscription`). Each item is one task to answer YOURSELF, as the model doing the work: follow `claude.systemPrompt` as your instructions and answer `claude.prompt`. When `claude.jsonSchema` is not null, your answer is a JSON value matching it (sent as `structured`); otherwise plain text (sent as `text`). Then hand each answer back with distribute_llm_work_result (its `id` and `leaseId`, and your own model id as `model`) before `answerBy`. An item you cannot do (it needs tools you lack, a schema you cannot meet) goes back with ok false and `error`. Call again until `items` is empty. Free: the work runs on your plan, nothing is charged. While you set up an account on `claude_subscription`, call this whenever another call fails or times out: the AI step behind it is waiting here for you. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_llm_work_claim",
+          "definitions": {
+            "distribute_llm_work_claim": {
+              "type": "object",
+              "properties": {
+                "max": {
+                  "description": "Most items to take at once (default 5, max 10).",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 10
+                },
+                "waitMs": {
+                  "description": "Wait up to this long for work when none is waiting (default 0: answer at once).",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 25000
+                },
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_llm_work_result": {
+        "description": "Hand back your answer to one item from distribute_llm_work_claim. Send `id` and `leaseId` from the item, `ok`, your model id as `model` (e.g. `claude-sonnet-5-5`), and `text` (no jsonSchema) or `structured` (a JSON value matching its jsonSchema). With ok false, send `error` in plain words. A 410 means the item expired and nobody waits for it anymore: move on to the next. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_llm_work_result",
+          "definitions": {
+            "distribute_llm_work_result": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The item's `id`."
+                },
+                "leaseId": {
+                  "type": "string",
+                  "description": "The item's `leaseId`."
+                },
+                "ok": {
+                  "type": "boolean",
+                  "description": "true when you answered it."
+                },
+                "model": {
+                  "description": "Your own model id, the one that wrote the answer. Required when ok.",
+                  "type": "string"
+                },
+                "text": {
+                  "description": "Your answer, for an item with no jsonSchema.",
+                  "type": "string"
+                },
+                "structured": {
+                  "description": "Your answer as a JSON value matching the item's jsonSchema (a JSON-encoded string is read as that value)."
+                },
+                "error": {
+                  "description": "When ok is false: why, in plain words.",
+                  "type": "string"
+                },
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "leaseId",
+                "ok"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
       "distribute_find_api": {
         "description": "Find how to do something in distribute.you when no other tool covers it. Searches every operation of the distribute.you API (the same API and the same scope your key has: leads, emails, conversations, campaigns and their caps, offers, sales funnels, triggers, billing, CRM, stats...) by what you want to do, in plain words (\"list the emails sent for my brand\", \"set a campaign's max budget\", \"pause a campaign\", \"account balance\"). Returns the best matching operations (method, path, summary, required parameters). Then call distribute_describe_api for the details and distribute_call_api to run it. With no query, lists the areas of the API and how many operations each has. To list the triggers (and which ones a call may fire), use distribute_list_triggers.",
         "inputSchema": {
@@ -1214,7 +1401,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Then, before acting on or answering what the client asks (a question about results, set something up, change how a campaign behaves, launch, attach files, caps...), read the method: distribute_list_skills, then distribute_read_skill on `index` and on every skill whose description matches the ask. They are the steps our own Copilot follows; an API route alone rarely is the whole setup. Before writing anything a person will read (a reply to the client, an email, a message, a file), read `client-comms`: how we speak to clients and prospects. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+        "summary": "Check the connection and say who the key belongs to: the user, and every organization the key reaches with its brands. A key belongs to its USER and reaches every organization that user is a member of; it never belongs to a brand. Call this first: the other tools take a brandId (and an orgId when a brand sits in several organizations) from this list. Then, before acting on or answering what the client asks (a question about results, set something up, change how a campaign behaves, launch, attach files, caps...), read the method: distribute_list_skills, then distribute_read_skill on `index` and on every skill whose description matches the ask. They are the steps our own Copilot follows; an API route alone rarely is the whole setup. Before writing anything a person will read (a reply to the client, an email, a message, a file), read `client-comms`: how we speak to clients and prospects. A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. Connect by OAuth (add https://mcp.distribute.you/mcp as a custom connector) or with a key from distribute_signup_start, sent as `Authorization: Bearer <key>`.",
         "description": "MCP Tool: distribute_status. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_status\".",
         "requestBody": {
           "content": {
@@ -3091,6 +3278,368 @@
                   "subjectService",
                   "subjectId",
                   "kind"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_llm_source": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Say who runs the organization's AI work (writing emails, judging replies, the conversation with Distry): `claude_subscription` (the founder's own Claude plan answers it, $0 to them), `own_key` (their own provider key, billed by that provider) or `ours` (our keys, billed to the account). Returns `source`, the waiting work (`pendingCalls`), whether a routine took work in the last minute (`runner`), and which provider keys the organization holds (masked). Free. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_llm_source. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_llm_source\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_set_llm_source": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Choose who runs the organization's AI work, for every campaign and the conversation at once. On a new account, set it FIRST, before creating the brand or anything else: every AI step from then on (reading the site, drafting offers, writing emails) runs on the chosen source. `claude_subscription`: the founder's own Claude plan does it, $0 to them. The work waits in a queue; their Claude takes it and hands the answers back with distribute_llm_work_claim and distribute_llm_work_result. The answer carries `routine`: create that hourly routine (scheduled task) right away in the app you run in, with its prompt as given, so the work is done while nobody is chatting. `own_key`: their own provider key (default provider `anthropic`), set first with distribute_set_key. `ours`: our keys, billed to the account. Never ask for or use a Claude login or session token: only the founder's own Claude, inside their app, answers the work. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_set_llm_source. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_set_llm_source\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "claude_subscription",
+                      "own_key",
+                      "ours"
+                    ],
+                    "description": "`claude_subscription`, `own_key` or `ours`."
+                  },
+                  "provider": {
+                    "description": "For `own_key`: the provider of the key (default `anthropic`).",
+                    "type": "string"
+                  },
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "source"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_set_key": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Save the organization's own key for a provider (anthropic, openai, apollo, instantly...), so its campaigns use that key and the provider bills them directly. Replaces any key already saved for that provider, and makes the organization use its own key for it. The key is stored encrypted; answers show it masked only. Ask the founder to paste the key; never guess or reuse one. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_set_key. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_set_key\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "description": "Provider name, lowercase (e.g. `anthropic`, `openai`, `apollo`)."
+                  },
+                  "apiKey": {
+                    "type": "string",
+                    "description": "The provider key, as the founder pasted it."
+                  },
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "provider",
+                  "apiKey"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_llm_work_claim": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Take the AI work waiting for this organization's Claude (when its source is `claude_subscription`). Each item is one task to answer YOURSELF, as the model doing the work: follow `claude.systemPrompt` as your instructions and answer `claude.prompt`. When `claude.jsonSchema` is not null, your answer is a JSON value matching it (sent as `structured`); otherwise plain text (sent as `text`). Then hand each answer back with distribute_llm_work_result (its `id` and `leaseId`, and your own model id as `model`) before `answerBy`. An item you cannot do (it needs tools you lack, a schema you cannot meet) goes back with ok false and `error`. Call again until `items` is empty. Free: the work runs on your plan, nothing is charged. While you set up an account on `claude_subscription`, call this whenever another call fails or times out: the AI step behind it is waiting here for you. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_llm_work_claim. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_llm_work_claim\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "max": {
+                    "description": "Most items to take at once (default 5, max 10).",
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "waitMs": {
+                    "description": "Wait up to this long for work when none is waiting (default 0: answer at once).",
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 25000
+                  },
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_llm_work_result": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Hand back your answer to one item from distribute_llm_work_claim. Send `id` and `leaseId` from the item, `ok`, your model id as `model` (e.g. `claude-sonnet-5-5`), and `text` (no jsonSchema) or `structured` (a JSON value matching its jsonSchema). With ok false, send `error` in plain words. A 410 means the item expired and nobody waits for it anymore: move on to the next. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_llm_work_result. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_llm_work_result\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "The item's `id`."
+                  },
+                  "leaseId": {
+                    "type": "string",
+                    "description": "The item's `leaseId`."
+                  },
+                  "ok": {
+                    "type": "boolean",
+                    "description": "true when you answered it."
+                  },
+                  "model": {
+                    "description": "Your own model id, the one that wrote the answer. Required when ok.",
+                    "type": "string"
+                  },
+                  "text": {
+                    "description": "Your answer, for an item with no jsonSchema.",
+                    "type": "string"
+                  },
+                  "structured": {
+                    "description": "Your answer as a JSON value matching the item's jsonSchema (a JSON-encoded string is read as that value)."
+                  },
+                  "error": {
+                    "description": "When ok is false: why, in plain words.",
+                    "type": "string"
+                  },
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "leaseId",
+                  "ok"
                 ],
                 "additionalProperties": false
               }
