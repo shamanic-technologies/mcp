@@ -162,7 +162,7 @@ export const LLM_SOURCES = ["claude_subscription", "own_key", "ours"] as const;
 export type LlmSource = (typeof LLM_SOURCES)[number];
 
 /** Named on every claim so the org's state shows who took its work. */
-export const ROUTINE_RUNNER = { name: "Claude routine (distribute.you MCP)" };
+export const ROUTINE_RUNNER = { name: "Claude routine (distribute.you MCP)", kind: "routine" };
 
 /**
  * The routine the founder's Claude creates when they pick their Claude subscription: about once an hour it
@@ -667,7 +667,7 @@ export const toolDefinitions = {
     description:
       "Hand back your answer to one item from distribute_llm_work_claim. Send `id` and `leaseId` from the item, `ok`, your model id as `model` (e.g. `claude-sonnet-5-5`), " +
       "and `text` (no jsonSchema) or `structured` (a JSON value matching its jsonSchema). With ok false, send `error` in plain words. " +
-      "A 410 means the item expired and nobody waits for it anymore: move on to the next. " +
+      "A 410 means the item expired and nobody waits for it anymore: move on to the next. A claimed item has 30 minutes to be answered. " +
       TARGET_HINT,
     schema: z.object({
       id: z.string().describe("The item's `id`."),

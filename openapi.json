@@ -1096,7 +1096,7 @@
         }
       },
       "distribute_llm_work_result": {
-        "description": "Hand back your answer to one item from distribute_llm_work_claim. Send `id` and `leaseId` from the item, `ok`, your model id as `model` (e.g. `claude-sonnet-5-5`), and `text` (no jsonSchema) or `structured` (a JSON value matching its jsonSchema). With ok false, send `error` in plain words. A 410 means the item expired and nobody waits for it anymore: move on to the next. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "Hand back your answer to one item from distribute_llm_work_claim. Send `id` and `leaseId` from the item, `ok`, your model id as `model` (e.g. `claude-sonnet-5-5`), and `text` (no jsonSchema) or `structured` (a JSON value matching its jsonSchema). With ok false, send `error` in plain words. A 410 means the item expired and nobody waits for it anymore: move on to the next. A claimed item has 30 minutes to be answered. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_llm_work_result",
           "definitions": {
@@ -3665,7 +3665,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Hand back your answer to one item from distribute_llm_work_claim. Send `id` and `leaseId` from the item, `ok`, your model id as `model` (e.g. `claude-sonnet-5-5`), and `text` (no jsonSchema) or `structured` (a JSON value matching its jsonSchema). With ok false, send `error` in plain words. A 410 means the item expired and nobody waits for it anymore: move on to the next. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "Hand back your answer to one item from distribute_llm_work_claim. Send `id` and `leaseId` from the item, `ok`, your model id as `model` (e.g. `claude-sonnet-5-5`), and `text` (no jsonSchema) or `structured` (a JSON value matching its jsonSchema). With ok false, send `error` in plain words. A 410 means the item expired and nobody waits for it anymore: move on to the next. A claimed item has 30 minutes to be answered. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_llm_work_result. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_llm_work_result\".",
         "requestBody": {
           "content": {
