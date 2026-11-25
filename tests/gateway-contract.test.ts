@@ -126,8 +126,8 @@ describe("the curated tools are read-only", () => {
  * they can actually go. It used to name the retired brand's dashboard host, which
  * stopped resolving when that brand was retired.
  */
-describe("the unconfigured message points at the real key page", () => {
-  it("names the live dashboard and the header to send", async () => {
+describe("the unconfigured message points where a founder can actually go", () => {
+  it("names the OAuth connector and the header to send, never the dashboard (SOLO-PLAN-1125)", async () => {
     const { getConfigStatus } = await import("../src/lib/api-client.js");
     vi.mocked(getConfigStatus).mockReturnValueOnce({
       configured: false,
@@ -141,7 +141,8 @@ describe("the unconfigured message points at the real key page", () => {
 
     expect(result.status).toBe("not_configured");
     const text = result.instructions.join(" ");
-    expect(text).toContain("dashboard.distribute.you");
+    expect(text).toContain("https://mcp.distribute.you/mcp");
+    expect(text).not.toContain("dashboard.distribute.you");
     expect(text).toContain("Authorization: Bearer");
     expect(text.toLowerCase()).not.toContain(RETIRED_BRAND);
   });

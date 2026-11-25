@@ -212,7 +212,7 @@ export const toolDefinitions = {
       "Before writing anything a person will read (a reply to the client, an email, a message, a file), read `client-comms`: how we speak to clients and prospects. " +
       "A key that reaches many organizations (a distribute.you staff key reaches all of them) should pass `search` " +
       "with a name or domain (\"acme\", \"acme.com\") to get only the organizations and brands that match. " +
-      "Keys are created and revoked at https://dashboard.distribute.you and sent as `Authorization: Bearer <key>`.",
+      "Connect by OAuth (add https://mcp.distribute.you/mcp as a custom connector) or with a key from distribute_signup_start, sent as `Authorization: Bearer <key>`.",
     schema: z.object({
       search: z
         .string()
@@ -847,7 +847,7 @@ const SIGNUP_INSTRUCTIONS = [
   "2. Call distribute_signup_complete with that email and code. It returns an API key, and this session uses it right away.",
   "3. Reading the account is free. To spend, prepay with distribute_prepay (minimums at distribute_reload_rules, auto top-up required) and pay at the url it returns.",
   "Already have a key? Send it as the header Authorization: Bearer <your key> (in an MCP client, put that header in this server's configuration and reconnect). " +
-    "A person can also create one at https://dashboard.distribute.you (organization, then API Key).",
+    "Or add https://mcp.distribute.you/mcp as a custom connector in claude.ai, ChatGPT or Claude Desktop: the app connects by OAuth, the person confirms once by email.",
 ];
 
 async function handleStatus(args: Record<string, unknown> = {}) {
@@ -876,7 +876,7 @@ async function handleStatus(args: Record<string, unknown> = {}) {
       hint:
         "The API refused this key. A revoked, deleted, mistyped or placeholder key (distrib.usr_YOUR_KEY) all look the same from here. " +
         "No working key? " + NO_HUMAN_NEEDED + " Follow `instructions`: this session switches to the new key right away. " +
-        "Have a real key? Check it at https://dashboard.distribute.you (organization, then API Key) and send it as `Authorization: Bearer <key>`.",
+        "Have a real key? Send it as `Authorization: Bearer <key>`. Connected as a custom connector? Remove it and add it again: the app connects by OAuth with a fresh key.",
       instructions: SIGNUP_INSTRUCTIONS,
     };
   }
