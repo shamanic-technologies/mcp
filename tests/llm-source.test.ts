@@ -134,6 +134,14 @@ describe("distribute_llm_work_claim / result", () => {
     });
   });
 
+  it("never says handed back when the service stored the answer as failed", async () => {
+    routes({ "POST /v1/local-llm/work/i-3/result": { status: 200, data: { stored: true, status: "failed", error: "unpriced model" } } });
+    const out = (await handleToolCall("distribute_llm_work_result", { id: "i-3", leaseId: "l", ok: true, model: "m", text: "x" })) as Record<string, any>;
+    expect(out.error).toBe("unpriced model");
+    expect(out.next).toMatch(/NOT used/);
+    expect(out.next).not.toMatch(/Handed back/);
+  });
+
   it("relays an expired item's 410 whole", async () => {
     routes({ "POST /v1/local-llm/work/i-2/result": { status: 410, error: "gone", errorBody: { error: "expired" } } });
     await expect(handleToolCall("distribute_llm_work_result", { id: "i-2", leaseId: "l", ok: true, model: "m", text: "x" })).rejects.toThrow(/410.*expired/);
