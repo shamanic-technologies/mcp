@@ -8,7 +8,8 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { toolDefinitions, handleToolCall, mintedKey } from "./tools/index.js";
 import { runWithApiKey, callApi } from "./lib/api-client.js";
 import { SessionKey, newSessionKey, applyHeaderKey, noteKeyRefused, adoptMintedKey } from "./lib/session-key.js";
-import { discoveryDocument, notFoundDocument, SERVER_NAME, SERVER_VERSION } from "./discovery.js";
+import { discoveryDocument, notFoundDocument, publicOrigin, SERVER_NAME, SERVER_VERSION } from "./discovery.js";
+import { createOAuthRouter, gatewaySignupApi, wwwAuthenticate } from "./oauth.js";
 
 const PORT = process.env.PORT || 3000;
 
@@ -19,10 +20,14 @@ app.use(cors({
   origin: "*",
   methods: ["GET", "POST", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "mcp-session-id"],
-  exposedHeaders: ["mcp-session-id"],
+  exposedHeaders: ["mcp-session-id", "WWW-Authenticate"],
 }));
 
 app.use(express.json());
+
+// OAuth front door (MCP-OAUTH-1125): claude.ai / ChatGPT connectors approve once
+// through the agent-signup email link and hold the person's own API key.
+app.use(createOAuthRouter());
 
 // Session data includes transport and API key
 interface SessionData extends SessionKey {
@@ -81,6 +86,28 @@ app.post("/mcp", async (req: Request, res: Response) => {
     let sessionData = sessionId ? sessions.get(sessionId) : undefined;
 
     if (!sessionData) {
+      // A new session needs a key. Without one (claude.ai, ChatGPT, Claude Code
+      // with no header), the 401 starts the client's OAuth flow; a revoked key
+      // gets the same answer, so the app asks the person to connect again.
+      const challenge = !apiKey
+        ? wwwAuthenticate(publicOrigin(req))
+        : (await gatewaySignupApi.keyRefused(apiKey))
+          ? wwwAuthenticate(publicOrigin(req), "invalid_token")
+          : null;
+      if (challenge) {
+        res.setHeader("WWW-Authenticate", challenge);
+        return res.status(401).json({
+          jsonrpc: "2.0",
+          error: {
+            code: -32001,
+            message: apiKey
+              ? "This API key was revoked or is not valid. Connect again: your app opens the distribute.you approval page."
+              : "Connect your distribute.you account: your app opens the approval page (OAuth). A header-capable client can send Authorization: Bearer <API key> instead.",
+          },
+          id: null,
+        });
+      }
+
       // Create new session
       sessionId = crypto.randomUUID();
       

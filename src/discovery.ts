@@ -21,6 +21,7 @@ export interface McpDiscoveryDocument {
   authentication: {
     type: "bearer";
     description: string;
+    oauth: { protectedResourceMetadata: string; authorizationServerMetadata: string };
   };
   documentation: string;
   openapi: string;
@@ -62,16 +63,23 @@ export function discoveryDocument(req: Request): McpDiscoveryDocument {
       "campaigns and their results, leads, the emails written and sent with every follow-up, " +
       "each prospect's conversation, and every other API operation, found by intent. Every " +
       "call carries the Bearer key it is made with, and the API decides what that key may do. " +
-      "No human needed: request a key with an email, prepay when you need to spend.",
+      "Connect once with OAuth or a key: request a key with an email, prepay when you need to spend.",
     transport: "streamable-http",
     endpoint: `${origin}/mcp`,
     authentication: {
       type: "bearer",
       description:
         "Send an API key as `Authorization: Bearer <key>`. The key carries organisation and " +
-        "user identity; no other header is needed. No human needed to get one: connect with no " +
-        "key, call distribute_signup_start (email + phone) then distribute_signup_complete (the " +
-        "emailed code) to receive a key, and distribute_prepay when you need to spend.",
+        "user identity; no other header is needed. An app that cannot set a header (claude.ai, " +
+        "ChatGPT) connects with OAuth: a request with no key gets 401 and a pointer to " +
+        "`/.well-known/oauth-protected-resource`; the person types their email once, clicks " +
+        "Confirm in the email, and the app holds their own API key from then on. An agent with " +
+        "no browser gets a key from the API: POST https://api.distribute.you/v1/agent-signups/start " +
+        "(email) then /v1/agent-signups/complete (the emailed code), and distribute_prepay when it needs to spend.",
+      oauth: {
+        protectedResourceMetadata: `${origin}/.well-known/oauth-protected-resource`,
+        authorizationServerMetadata: `${origin}/.well-known/oauth-authorization-server`,
+      },
     },
     documentation: DOCS_URL,
     openapi: OPENAPI_URL,

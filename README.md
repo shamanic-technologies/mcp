@@ -2,19 +2,21 @@
 
 A remote [MCP](https://modelcontextprotocol.io) server for [distribute.you](https://distribute.you). Point any MCP client at it with your distribute.you API key and do from there everything the [distribute.you API](https://api.distribute.you/openapi.json) lets that key do: read brands, campaigns and their results, leads, the emails we wrote and sent with every follow-up, each prospect's conversation, and reach every other API operation (campaign caps, offers, audiences, billing, CRM...) by describing what you want.
 
-It is a **remote HTTP server**, not an npx package. Nothing is published to npm and nothing is installed locally — a client connects over Streamable HTTP and authenticates with a header.
+It is a **remote HTTP server**, not an npx package. Nothing is published to npm and nothing is installed locally — a client connects over Streamable HTTP and authenticates with OAuth or a header.
 
-## No human needed: an agent gets its own key
+## claude.ai, ChatGPT and any app with OAuth: approve once
 
-An AI agent can open a distribute.you account, get an API key and prepay, all through this server, with no key to start and no human in the loop. Request a key with an email, prepay when you need to spend.
+Add `https://mcp.distribute.you/mcp` as a custom connector. The app opens our approval page: type your email, click **Confirm** in the email we send. A new email opens its account there. From then on every chat of that app acts on your account, after every deploy, until you remove it.
 
-1. Connect to `https://mcp.distribute.you/mcp` with no header.
-2. `distribute_signup_start` with an email the agent can read and a phone number in international format (`+33612345678`, only its format is checked). A 6-digit code is emailed.
-3. `distribute_signup_complete` with the email and the code. It returns `apiKey` (shown once: store it). The session uses it right away, even one opened with a placeholder or refused key. Later, reconnect with `Authorization: Bearer <apiKey>`, or call `https://api.distribute.you` with that header. Each call makes a new key; an email that already has an account gets one more key for it.
-4. Reading the account is free. Before anything that spends, `distribute_prepay` with `topup_amount_cents` (and optionally `auto_topup_amount_cents`, what each automatic reload adds). The minimums and the default reload are billing's: read them with `distribute_reload_rules`. It returns a payment `url`: open it, or hand it to a human to pay by card. Auto top-up is required; the card reloads when the balance runs out. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`). `distribute_set_reload_amount` changes the reload amount later, with no new payment; a reload amount of 0 turns automatic reload off.
-5. `distribute_prepaid_status` until `state` is `active`.
+How it works: a request with no key gets `401` with `WWW-Authenticate: Bearer resource_metadata=".../.well-known/oauth-protected-resource"` (MCP authorization, RFC 9728). The app reads `/.well-known/oauth-authorization-server` (RFC 8414), registers itself at `/register` (RFC 7591, stateless: the `client_id` carries its redirect URIs), and runs authorization code + PKCE S256. The approval is the ONE agent-signup mechanism (`/v1/agent-signups/start` emails the link, `/authorize/status` polls `/v1/agent-signups/complete` with the poll token). The token the app gets IS a distribute.you API key of that person, named `<App> connector <date>`, with no expiry. Revoke it like any key (`DELETE /v1/api-keys/{id}`): the next connection gets `401 invalid_token` and the app asks to connect again; a refresh of a revoked key is `invalid_grant`.
 
-Pay as you go: you prepay a balance, and each action is billed from it at its price on [distribute.you/catalog](https://distribute.you/catalog) (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap. A call that costs money on an account with no balance comes back `402 payment_required` with the gateway's `prepay` block and a `nextStep` naming `distribute_prepay`, so the agent prepays and retries.
+## An agent with no browser gets its own key
+
+1. `POST https://api.distribute.you/v1/agent-signups/start` with an email the agent can read (phone optional). A 6-digit code is emailed.
+2. `POST https://api.distribute.you/v1/agent-signups/complete` with the email and the code. It returns `apiKey` (shown once: store it). Connect to `https://mcp.distribute.you/mcp` with `Authorization: Bearer <apiKey>`.
+3. Reading the account is free. Before anything that spends, `distribute_prepay` with `topup_amount_cents` (minimums at `distribute_reload_rules`). It returns a payment `url`. `distribute_prepaid_status` until `state` is `active`.
+
+Pay as you go: you prepay a balance, and each action is billed from it at its price on [distribute.you/catalog](https://distribute.you/catalog). A call that costs money on an account with no balance comes back `402 payment_required` with a `nextStep` naming `distribute_prepay`.
 
 ## Connecting
 
