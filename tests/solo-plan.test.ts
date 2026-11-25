@@ -107,6 +107,13 @@ describe("plan tools", () => {
     expect(out.notice.message).toBe(OUT_OF_CREDIT_TEXT.credit_used_up);
   });
 
+  it("distribute_plan_status says plainly when the account is not on the plan", async () => {
+    mockCallApi.mockResolvedValueOnce({ error: "not on plan", status: 404, errorBody: { error: "not on plan", code: "not_enrolled" } });
+    const out = (await handleToolCall("distribute_plan_status", {})) as Record<string, any>;
+    expect(out.onPlan).toBe(false);
+    expect(out.next).toContain("distribute_start_plan");
+  });
+
   it("distribute_start_plan hands the card page back", async () => {
     mockCallApi.mockResolvedValueOnce({ data: { ...state(), checkout_url: "https://checkout.stripe.com/x" } });
     const out = (await handleToolCall("distribute_start_plan", {})) as Record<string, any>;

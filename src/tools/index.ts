@@ -2144,6 +2144,14 @@ export async function planWall(name: string, args: Record<string, unknown>): Pro
 
 async function handlePlanStatus(args: Record<string, unknown>) {
   const result = await callApi<PlanState>(withTarget(SOLO_PLAN_PATH, args));
+  if (result.status === 404 && result.errorBody?.code === "not_enrolled") {
+    return {
+      plan: null,
+      onPlan: false,
+      message: "This account is not on the monthly plan.",
+      next: "distribute_start_plan puts it on the plan and starts it (3 days free first, card required).",
+    };
+  }
   if (result.error) failWhole(result);
   const state = result.data as PlanState;
   return state.out_of_credit === true ? { ...state, notice: outOfCreditAnswer(state) } : state;
