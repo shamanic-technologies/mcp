@@ -104,6 +104,14 @@ describe("the curated tools are read-only", () => {
     expect(src).toContain('"/v1/agent-signups/complete"');
     expect(src).toContain('"/v1/billing/accounts/prepaid_checkout"');
     expect(src).not.toContain("/v1/campaigns\", {");
+    // SOLO-PLAN-1125: the founder's AI work, through ONE helper (`writeJson`): who runs it (chat-service's
+    // declaration, key-service's key source), the org's own provider key, and the work queue its Claude
+    // answers. None touches a campaign or money.
+    const writes = src.match(/writeJson\([^;]*?"(PUT|POST)"/g) ?? [];
+    expect(writes.length).toBe(7);
+    for (const path of ['"/v1/local-llm"', '"/v1/keys"', "/source`", '"/v1/local-llm/work/claim"', "/v1/local-llm/work/${encodeURIComponent(id)}/result`"]) {
+      expect(src).toContain(path);
+    }
   });
 
   it("describes no tool by an action it cannot perform", () => {
