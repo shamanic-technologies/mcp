@@ -1045,8 +1045,9 @@ describe("the method skills", () => {
 describe("tool text speaks the current model", () => {
   // Owner 2026-10-14: a campaign is a sales funnel campaign with caps (max budget and/or max
   // volume per period), pay as you go at catalogue prices. Retired: a daily budget per campaign,
-  // free credits, the old fixed offers, and calling us an agency.
-  const RETIRED = [/daily budget/i, /free credit/i, /\$400/, /\$1\/day/, /agency/i, /\bsubscription\b/i, /\btrial\b/i];
+  // free credits, the old fixed offers, and calling us an agency. A trial is current again since the
+  // solo-founder plan (owner 2026-11-25, SOLO-PLAN-1125: $99/month, 3 days free first).
+  const RETIRED = [/daily budget/i, /free credit/i, /\$400/, /\$1\/day/, /agency/i, /\bsubscription\b/i];
 
   it("no tool description, parameter description or example names a retired concept", () => {
     const text = JSON.stringify(
