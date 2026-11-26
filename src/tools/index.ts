@@ -775,7 +775,10 @@ export const toolDefinitions = {
     schema: z.object({
       method: z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]).describe("HTTP method of the operation."),
       path: z.string().describe("Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."),
-      query: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional().describe("Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}."),
+      query: z
+        .union([z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])), z.string()])
+        .optional()
+        .describe("Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20} (a JSON-encoded string of an object is read as that object)."),
       body: z.unknown().optional().describe("JSON body for POST, PUT and PATCH, as an object (a JSON-encoded string of an object is read as that object)."),
       ...targetShape,
     }),
@@ -2857,8 +2860,27 @@ export function jsonBody(body: unknown): unknown {
   );
 }
 
+/** A query handed over as a JSON-encoded string (seen from a blank agent, 2026-11-26) is read as that object; anything else is refused, named. */
+export function jsonQuery(query: string): Record<string, unknown> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(query);
+  } catch {
+    parsed = undefined;
+  }
+  if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  throw new Error(
+    JSON.stringify({
+      error: "query_not_json",
+      message: `query is a string that is not a JSON object (starts: ${JSON.stringify(query.slice(0, 80))}).`,
+      fix: "Pass query as an object, e.g. {\"brandId\": \"...\"}, or put it in the path after `?`.",
+    }),
+  );
+}
+
 async function handleCallApi(rawArgs: Record<string, unknown>) {
-  const args = rawArgs.body === undefined ? rawArgs : { ...rawArgs, body: jsonBody(rawArgs.body) };
+  const withBody = rawArgs.body === undefined ? rawArgs : { ...rawArgs, body: jsonBody(rawArgs.body) };
+  const args = typeof withBody.query === "string" ? { ...withBody, query: jsonQuery(withBody.query) } : withBody;
   const method = String(args.method).toUpperCase() as HttpMethod;
   const rawPath = String(args.path ?? "").trim();
   if (!rawPath.startsWith("/")) throw new Error(`path must start with "/" (got: ${rawPath || "nothing"}), e.g. /v1/emails`);

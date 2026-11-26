@@ -1379,15 +1379,22 @@
                   "description": "Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."
                 },
                 "query": {
-                  "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}.",
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": [
-                      "string",
-                      "number",
-                      "boolean"
-                    ]
-                  }
+                  "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20} (a JSON-encoded string of an object is read as that object).",
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      }
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
                 },
                 "body": {
                   "description": "JSON body for POST, PUT and PATCH, as an object (a JSON-encoded string of an object is read as that object)."
@@ -4299,15 +4306,22 @@
                     "description": "Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."
                   },
                   "query": {
-                    "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}.",
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": [
-                        "string",
-                        "number",
-                        "boolean"
-                      ]
-                    }
+                    "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20} (a JSON-encoded string of an object is read as that object).",
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ]
+                        }
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
                   },
                   "body": {
                     "description": "JSON body for POST, PUT and PATCH, as an object (a JSON-encoded string of an object is read as that object)."
