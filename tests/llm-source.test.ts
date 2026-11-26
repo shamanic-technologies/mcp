@@ -178,7 +178,8 @@ describe("distribute_llm_work_claim / result", () => {
 
   it("hands a long prompt back in parts, the rest read with distribute_llm_work_read, nothing cut", async () => {
     const long = "a".repeat(30_000) + "b".repeat(30_000) + "c".repeat(5);
-    const item = { id: "i-9", leaseId: "l", kind: "judgment", answerBy: new Date(Date.now() + 600_000).toISOString(), claude: { systemPrompt: "s", prompt: long, jsonSchema: null, model: "m", tools: [] } };
+    // answerBy already past: a kept item's first caller gave up long ago, the claim still has 30 min.
+    const item = { id: "i-9", leaseId: "l", kind: "judgment", answerBy: new Date(Date.now() - 3_600_000).toISOString(), claude: { systemPrompt: "s", prompt: long, jsonSchema: null, model: "m", tools: [] } };
     routes({ "POST /v1/local-llm/work/claim": { items: [item] } });
     const out = (await handleToolCall("distribute_llm_work_claim", {})) as Record<string, any>;
     const it0 = out.items[0];

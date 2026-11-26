@@ -2404,7 +2404,8 @@ export function splitLongPrompt(item: WorkItem): WorkItem {
   const now = Date.now();
   for (const [k, v] of claimedPrompts) if (v.expiresAt <= now) claimedPrompts.delete(k);
   const by = item.answerBy ? Date.parse(item.answerBy) : NaN;
-  claimedPrompts.set(promptKey(item.id), { prompt, expiresAt: Number.isFinite(by) ? by : now + 30 * 60_000 });
+  // A kept item's `answerBy` is its first caller's deadline, often already past: a claim has 30 min to answer (chat-service).
+  claimedPrompts.set(promptKey(item.id), { prompt, expiresAt: Math.max(Number.isFinite(by) ? by : 0, now + 30 * 60_000) });
   const parts = Math.ceil(prompt.length / PROMPT_PART_CHARS);
   return {
     ...item,
