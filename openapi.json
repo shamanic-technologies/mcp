@@ -138,7 +138,7 @@
         }
       },
       "distribute_prepay": {
-        "description": "No human needed: request a key with an email, prepay when you need to spend. Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically when it runs out, adding `auto_topup_amount_cents` each time. Auto top-up is required. Amounts in cents. The minimums and the default reload are billing's: read them with distribute_reload_rules. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Change the reload amount later, with no new payment, with distribute_set_reload_amount; a reload amount of 0 turns automatic reload off. Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. Then check distribute_prepaid_status until `state` is `active`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "For accounts already on the prepaid offer only. A new founder runs free on their own keys and Claude (distribute_campaign_keys, distribute_set_key, distribute_set_llm_source) or takes the monthly plan (distribute_start_plan); never offer this to them. No human needed: request a key with an email, prepay when you need to spend. Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically when it runs out, adding `auto_topup_amount_cents` each time. Auto top-up is required. Amounts in cents. The minimums and the default reload are billing's: read them with distribute_reload_rules. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Change the reload amount later, with no new payment, with distribute_set_reload_amount; a reload amount of 0 turns automatic reload off. Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. Then check distribute_prepaid_status until `state` is `active`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_prepay",
           "definitions": {
@@ -180,7 +180,7 @@
         }
       },
       "distribute_prepaid_status": {
-        "description": "Read the prepaid account: `state` (awaiting_payment: not paid yet; active: ready to spend; card_not_reloadable: fix it with distribute_prepay; auto_topup_off: the automatic reload is off (a reload amount of 0 turns it off), turn it back on with distribute_set_reload_amount or distribute_prepay; not_prepaid), `balance_cents`, `paid_cents`, the automatic reload settings and whether the saved card can reload. Free to call. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "For accounts already on the prepaid offer (a new founder reads distribute_plan_status instead). Read the prepaid account: `state` (awaiting_payment: not paid yet; active: ready to spend; card_not_reloadable: fix it with distribute_prepay; auto_topup_off: the automatic reload is off (a reload amount of 0 turns it off), turn it back on with distribute_set_reload_amount or distribute_prepay; not_prepaid), `balance_cents`, `paid_cents`, the automatic reload settings and whether the saved card can reload. Free to call. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_prepaid_status",
           "definitions": {
@@ -987,7 +987,7 @@
         }
       },
       "distribute_set_llm_source": {
-        "description": "Choose who runs the organization's AI work, for every campaign and the conversation at once. On a new account, set it FIRST, before creating the brand or anything else: every AI step from then on (reading the site, drafting offers, writing emails) runs on the chosen source. `claude_subscription`: the founder's own Claude plan does it, $0 to them. The work waits in a queue; their Claude takes it and hands the answers back with distribute_llm_work_claim and distribute_llm_work_result. The answer carries `routine`: create that hourly routine (scheduled task) right away in the app you run in, with its prompt as given, so the work is done while nobody is chatting. `own_key`: their own provider key (default provider `anthropic`), set first with distribute_set_key. `ours`: our keys, billed to the account. Never ask for or use a Claude login or session token: only the founder's own Claude, inside their app, answers the work. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "Choose who runs the organization's AI work, for every campaign and the conversation at once. On a new account, set it FIRST, before creating the brand or anything else: every AI step from then on (reading the site, drafting offers, writing emails) runs on the chosen source. `claude_subscription`: the founder's own Claude plan does it, $0 to them. The work waits in a queue; their Claude takes it and hands the answers back with distribute_llm_work_claim and distribute_llm_work_result. The answer carries `routine`: create that hourly routine (scheduled task) right away in the app you run in, with its prompt as given, so the work is done while nobody is chatting. `own_key`: their own provider key (default provider `anthropic`), set first with distribute_set_key. `ours`: our keys, billed to the account. Never ask for or use a Claude login or session token: only the founder's own Claude, inside their app, answers the work. It also puts a new account on the monthly plan's free state (`plan.onPlan`): it runs on its own keys and Claude, and spends no money of ours beyond a $2 debt; an account that already paid keeps its offer (`plan.keptOffer`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
           "$ref": "#/definitions/distribute_set_llm_source",
           "definitions": {
@@ -1038,7 +1038,7 @@
                   "description": "The campaign's Target outcome key, e.g. `meeting_booked`."
                 },
                 "campaignId": {
-                  "description": "The campaign, once created: read the scripts its strategy keeps. Absent = before launch.",
+                  "description": "The campaign UNIT's id: `units[].campaignId` of the sales-funnel campaign answer, never the sales-funnel campaign's own id. Any status, a stopped campaign just created included. Absent = before any campaign exists.",
                   "type": "string"
                 },
                 "brandId": {
@@ -1103,7 +1103,7 @@
               "type": "object",
               "properties": {
                 "max": {
-                  "description": "Most items to take at once (default 5, max 10).",
+                  "description": "Most items to take at once (default 1: one item can be long, answer it before taking the next).",
                   "type": "integer",
                   "minimum": 1,
                   "maximum": 10
@@ -1123,6 +1123,42 @@
                   "type": "string"
                 }
               },
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
+      "distribute_llm_work_read": {
+        "description": "Read the rest of a long work item's prompt: an item from distribute_llm_work_claim with `promptParts` carries part 1 in `claude.prompt`; read parts 2 to `promptParts` here, join them in order, then answer. Free. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_llm_work_read",
+          "definitions": {
+            "distribute_llm_work_read": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "description": "The item's `id`."
+                },
+                "part": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Which part, 2 to `promptParts`."
+                },
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "part"
+              ],
               "additionalProperties": false
             }
           },
@@ -1343,15 +1379,22 @@
                   "description": "Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."
                 },
                 "query": {
-                  "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}.",
-                  "type": "object",
-                  "additionalProperties": {
-                    "type": [
-                      "string",
-                      "number",
-                      "boolean"
-                    ]
-                  }
+                  "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20} (a JSON-encoded string of an object is read as that object).",
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "additionalProperties": {
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ]
+                      }
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
                 },
                 "body": {
                   "description": "JSON body for POST, PUT and PATCH, as an object (a JSON-encoded string of an object is read as that object)."
@@ -1796,7 +1839,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "No human needed: request a key with an email, prepay when you need to spend. Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically when it runs out, adding `auto_topup_amount_cents` each time. Auto top-up is required. Amounts in cents. The minimums and the default reload are billing's: read them with distribute_reload_rules. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Change the reload amount later, with no new payment, with distribute_set_reload_amount; a reload amount of 0 turns automatic reload off. Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. Then check distribute_prepaid_status until `state` is `active`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "For accounts already on the prepaid offer only. A new founder runs free on their own keys and Claude (distribute_campaign_keys, distribute_set_key, distribute_set_llm_source) or takes the monthly plan (distribute_start_plan); never offer this to them. No human needed: request a key with an email, prepay when you need to spend. Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically when it runs out, adding `auto_topup_amount_cents` each time. Auto top-up is required. Amounts in cents. The minimums and the default reload are billing's: read them with distribute_reload_rules. Less than a minimum is refused (400 with `code`, `minimum_cents` and `error`, relayed as is). Change the reload amount later, with no new payment, with distribute_set_reload_amount; a reload amount of 0 turns automatic reload off. Pay as you go: each action is billed from the balance at its price on https://distribute.you/catalog (an email sent is priced by its BounceVerify verdict). What a campaign may spend is its own cap, set on the campaign. Then check distribute_prepaid_status until `state` is `active`. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_prepay. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_prepay\".",
         "requestBody": {
           "content": {
@@ -1873,7 +1916,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Read the prepaid account: `state` (awaiting_payment: not paid yet; active: ready to spend; card_not_reloadable: fix it with distribute_prepay; auto_topup_off: the automatic reload is off (a reload amount of 0 turns it off), turn it back on with distribute_set_reload_amount or distribute_prepay; not_prepaid), `balance_cents`, `paid_cents`, the automatic reload settings and whether the saved card can reload. Free to call. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "For accounts already on the prepaid offer (a new founder reads distribute_plan_status instead). Read the prepaid account: `state` (awaiting_payment: not paid yet; active: ready to spend; card_not_reloadable: fix it with distribute_prepay; auto_topup_off: the automatic reload is off (a reload amount of 0 turns it off), turn it back on with distribute_set_reload_amount or distribute_prepay; not_prepaid), `balance_cents`, `paid_cents`, the automatic reload settings and whether the saved card can reload. Free to call. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_prepaid_status. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_prepaid_status\".",
         "requestBody": {
           "content": {
@@ -3485,7 +3528,7 @@
         "tags": [
           "MCP Tools"
         ],
-        "summary": "Choose who runs the organization's AI work, for every campaign and the conversation at once. On a new account, set it FIRST, before creating the brand or anything else: every AI step from then on (reading the site, drafting offers, writing emails) runs on the chosen source. `claude_subscription`: the founder's own Claude plan does it, $0 to them. The work waits in a queue; their Claude takes it and hands the answers back with distribute_llm_work_claim and distribute_llm_work_result. The answer carries `routine`: create that hourly routine (scheduled task) right away in the app you run in, with its prompt as given, so the work is done while nobody is chatting. `own_key`: their own provider key (default provider `anthropic`), set first with distribute_set_key. `ours`: our keys, billed to the account. Never ask for or use a Claude login or session token: only the founder's own Claude, inside their app, answers the work. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "summary": "Choose who runs the organization's AI work, for every campaign and the conversation at once. On a new account, set it FIRST, before creating the brand or anything else: every AI step from then on (reading the site, drafting offers, writing emails) runs on the chosen source. `claude_subscription`: the founder's own Claude plan does it, $0 to them. The work waits in a queue; their Claude takes it and hands the answers back with distribute_llm_work_claim and distribute_llm_work_result. The answer carries `routine`: create that hourly routine (scheduled task) right away in the app you run in, with its prompt as given, so the work is done while nobody is chatting. `own_key`: their own provider key (default provider `anthropic`), set first with distribute_set_key. `ours`: our keys, billed to the account. Never ask for or use a Claude login or session token: only the founder's own Claude, inside their app, answers the work. It also puts a new account on the monthly plan's free state (`plan.onPlan`): it runs on its own keys and Claude, and spends no money of ours beyond a $2 debt; an account that already paid keeps its offer (`plan.keptOffer`). Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "description": "MCP Tool: distribute_set_llm_source. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_set_llm_source\".",
         "requestBody": {
           "content": {
@@ -3572,7 +3615,7 @@
                     "description": "The campaign's Target outcome key, e.g. `meeting_booked`."
                   },
                   "campaignId": {
-                    "description": "The campaign, once created: read the scripts its strategy keeps. Absent = before launch.",
+                    "description": "The campaign UNIT's id: `units[].campaignId` of the sales-funnel campaign answer, never the sales-funnel campaign's own id. Any status, a stopped campaign just created included. Absent = before any campaign exists.",
                     "type": "string"
                   },
                   "brandId": {
@@ -3707,7 +3750,7 @@
                 "type": "object",
                 "properties": {
                   "max": {
-                    "description": "Most items to take at once (default 5, max 10).",
+                    "description": "Most items to take at once (default 1: one item can be long, answer it before taking the next).",
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 10
@@ -3727,6 +3770,77 @@
                     "type": "string"
                   }
                 },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_llm_work_read": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Read the rest of a long work item's prompt: an item from distribute_llm_work_claim with `promptParts` carries part 1 in `claude.prompt`; read parts 2 to `promptParts` here, join them in order, then answer. Free. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_llm_work_read. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_llm_work_read\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "description": "The item's `id`."
+                  },
+                  "part": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Which part, 2 to `promptParts`."
+                  },
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "part"
+                ],
                 "additionalProperties": false
               }
             }
@@ -4192,15 +4306,22 @@
                     "description": "Concrete path, e.g. /v1/emails or /v1/leads/123/timeline."
                   },
                   "query": {
-                    "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20}.",
-                    "type": "object",
-                    "additionalProperties": {
-                      "type": [
-                        "string",
-                        "number",
-                        "boolean"
-                      ]
-                    }
+                    "description": "Query parameters, e.g. {\"brandId\": \"...\", \"limit\": 20} (a JSON-encoded string of an object is read as that object).",
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ]
+                        }
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
                   },
                   "body": {
                     "description": "JSON body for POST, PUT and PATCH, as an object (a JSON-encoded string of an object is read as that object)."

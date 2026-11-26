@@ -97,7 +97,9 @@ describe("the curated tools are read-only", () => {
     const posts = src.match(/method: "(POST|PUT|PATCH|DELETE)"/g) ?? [];
     // SOLO-PLAN-1125: two more POSTs, the founder's own plan: start it (a checkout link or a card hold the
     // founder agreed to) and add a +$100/month layer (a charge the founder agreed to). billing owns both.
-    expect(posts.sort()).toEqual(['method: "PATCH"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"']);
+    // + the plan's free state when the founder picks who runs their AI (billing's idempotent enroll, it refuses paying accounts).
+    expect(posts.sort()).toEqual(['method: "PATCH"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"', 'method: "POST"']);
+    expect(src).toContain("withTarget(`${SOLO_PLAN_PATH}/enroll`, args)");
     expect(src).toContain("withTarget(`${SOLO_PLAN_PATH}/start`, args)");
     expect(src).toContain("withTarget(`${SOLO_PLAN_PATH}/layers`, args)");
     expect(src).toContain('withTarget("/v1/billing/accounts/auto_topup", args), {\n    method: "PATCH",\n    body: { topup_amount_cents: args.topup_amount_cents },');

@@ -1066,3 +1066,13 @@ describe("tool text speaks the current model", () => {
   });
 });
 
+
+describe("distribute_call_api query as a JSON string", () => {
+  it("reads a JSON-encoded query as that object, and refuses a non-JSON one by name", async () => {
+    const { jsonQuery } = await import("../src/tools/index.js");
+    expect(jsonQuery('{"brandId": "b-1", "limit": 5}')).toEqual({ brandId: "b-1", limit: 5 });
+    expect(() => jsonQuery("brandId=b-1")).toThrow(/query_not_json/);
+    expect(() => jsonQuery("[1]")).toThrow(/query_not_json/);
+    expect(toolDefinitions.distribute_call_api.schema.safeParse({ method: "GET", path: "/v1/x", query: '{"a":"b"}' }).success).toBe(true);
+  });
+});

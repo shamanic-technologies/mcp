@@ -39,11 +39,12 @@ describe("llmSourceOf", () => {
 
 describe("distribute_set_llm_source", () => {
   it("claude_subscription declares the org local and hands back the hourly routine to create", async () => {
-    routes({ "PUT /v1/local-llm?orgId=org-1": { declared: true, pendingCalls: 3 } });
+    routes({ "POST /v1/billing/accounts/solo_plan/enroll?orgId=org-1": { plan: "free" }, "PUT /v1/local-llm?orgId=org-1": { declared: true, pendingCalls: 3 } });
     const out = (await handleToolCall("distribute_set_llm_source", { source: "claude_subscription", orgId: "org-1" })) as Record<string, any>;
     expect(mockCallApi).toHaveBeenCalledWith("/v1/local-llm?orgId=org-1", { method: "PUT", body: { enabled: true } });
     expect(out.source).toBe("claude_subscription");
     expect(out.pendingCalls).toBe(3);
+    expect(out.plan).toEqual({ onPlan: true });
     expect(out.routine.every).toBe("hour");
     expect(out.routine.prompt).toContain("orgId org-1");
     expect(out.routine.prompt).toContain("distribute_llm_work_claim");
@@ -53,12 +54,13 @@ describe("distribute_set_llm_source", () => {
   });
 
   it("own_key refuses with a named fix when the org has no key for that provider", async () => {
-    routes({ "GET /v1/keys": { keys: [] } });
+    routes({ "POST /v1/billing/accounts/solo_plan/enroll": { plan: "free" }, "GET /v1/keys": { keys: [] } });
     await expect(handleToolCall("distribute_set_llm_source", { source: "own_key" })).rejects.toThrow(/key_missing.*distribute_set_key/);
   });
 
   it("own_key stops the local declaration and puts the provider on the org's key", async () => {
     routes({
+      "POST /v1/billing/accounts/solo_plan/enroll": { status: 409, error: "existing_paying_org", errorBody: { error: "existing_paying_org", code: "existing_paying_org" } },
       "GET /v1/keys": { keys: [{ provider: "anthropic", maskedKey: "sk-…AAAA" }] },
       "PUT /v1/local-llm": { declared: false },
       "PUT /v1/keys/anthropic/source": { provider: "anthropic", keySource: "org" },
@@ -66,11 +68,11 @@ describe("distribute_set_llm_source", () => {
     const out = (await handleToolCall("distribute_set_llm_source", { source: "own_key" })) as Record<string, any>;
     expect(mockCallApi).toHaveBeenCalledWith("/v1/local-llm", { method: "PUT", body: { enabled: false } });
     expect(mockCallApi).toHaveBeenCalledWith("/v1/keys/anthropic/source", { method: "PUT", body: { keySource: "org" } });
-    expect(out).toMatchObject({ source: "own_key", provider: "anthropic" });
+    expect(out).toMatchObject({ source: "own_key", provider: "anthropic", plan: { onPlan: false, keptOffer: "existing_paying_org" } });
   });
 
   it("ours stops the local declaration and puts anthropic back on the platform key", async () => {
-    routes({ "PUT /v1/local-llm": { declared: false }, "PUT /v1/keys/anthropic/source": {} });
+    routes({ "POST /v1/billing/accounts/solo_plan/enroll": { plan: "free" }, "PUT /v1/local-llm": { declared: false }, "PUT /v1/keys/anthropic/source": {} });
     await handleToolCall("distribute_set_llm_source", { source: "ours" });
     expect(mockCallApi).toHaveBeenCalledWith("/v1/keys/anthropic/source", { method: "PUT", body: { keySource: "platform" } });
   });
@@ -140,7 +142,7 @@ describe("distribute_llm_work_claim / result", () => {
   it("claims without holding the call open by default, named as the routine", async () => {
     routes({ "POST /v1/local-llm/work/claim": { items: [] } });
     const out = (await handleToolCall("distribute_llm_work_claim", {})) as Record<string, any>;
-    expect(mockCallApi).toHaveBeenCalledWith("/v1/local-llm/work/claim", { method: "POST", body: { max: 5, waitMs: 0, runner: ROUTINE_RUNNER } });
+    expect(mockCallApi).toHaveBeenCalledWith("/v1/local-llm/work/claim", { method: "POST", body: { max: 1, waitMs: 0, runner: ROUTINE_RUNNER } });
     expect(out.items).toEqual([]);
     expect(out.next).toMatch(/Stop/);
   });
@@ -172,6 +174,22 @@ describe("distribute_llm_work_claim / result", () => {
   it("relays an expired item's 410 whole", async () => {
     routes({ "POST /v1/local-llm/work/i-2/result": { status: 410, error: "gone", errorBody: { error: "expired" } } });
     await expect(handleToolCall("distribute_llm_work_result", { id: "i-2", leaseId: "l", ok: true, model: "m", text: "x" })).rejects.toThrow(/410.*expired/);
+  });
+
+  it("hands a long prompt back in parts, the rest read with distribute_llm_work_read, nothing cut", async () => {
+    const long = "a".repeat(30_000) + "b".repeat(30_000) + "c".repeat(5);
+    const item = { id: "i-9", leaseId: "l", kind: "judgment", answerBy: new Date(Date.now() + 600_000).toISOString(), claude: { systemPrompt: "s", prompt: long, jsonSchema: null, model: "m", tools: [] } };
+    routes({ "POST /v1/local-llm/work/claim": { items: [item] } });
+    const out = (await handleToolCall("distribute_llm_work_claim", {})) as Record<string, any>;
+    const it0 = out.items[0];
+    expect(it0.promptParts).toBe(3);
+    expect(it0.claude.prompt).toBe("a".repeat(30_000));
+    const p2 = (await handleToolCall("distribute_llm_work_read", { id: "i-9", part: 2 })) as Record<string, any>;
+    const p3 = (await handleToolCall("distribute_llm_work_read", { id: "i-9", part: 3 })) as Record<string, any>;
+    expect(it0.claude.prompt + p2.text + p3.text).toBe(long);
+    expect(p3.next).toMatch(/last part/);
+    await expect(handleToolCall("distribute_llm_work_read", { id: "i-9", part: 4 })).rejects.toThrow(/bad_part/);
+    await expect(handleToolCall("distribute_llm_work_read", { id: "nope", part: 2 })).rejects.toThrow(/item_not_held/);
   });
 
   it("structuredValue keeps a non-JSON string as text", () => {
