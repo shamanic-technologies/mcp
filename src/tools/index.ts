@@ -84,9 +84,10 @@ export function paymentRequired(result: { error?: string; errorBody?: ApiErrorBo
     status: 402,
     ...(result.errorBody ?? { error: result.error ?? "payment_required" }),
     nextStep:
-      "This call costs money and the organization has no prepaid balance. Call distribute_prepay with `topup_amount_cents` at least the minimum " +
-      "billing states (distribute_reload_rules, or the `prepay` block above). It returns a payment url: open it, or give it to your human to pay by card. " +
-      "Check with distribute_prepaid_status, then retry this call.",
+      "This call costs money and the organization has nothing to pay it with. An account that never paid has two ways, offer both: " +
+      "(1) free on its own keys and Claude: distribute_campaign_keys lists the keys the campaign needs, distribute_set_key saves each, distribute_set_llm_source `claude_subscription` runs the AI; " +
+      "(2) the monthly plan: distribute_start_plan ($99/month on our keys, 3 days free first). " +
+      "Only an account already on the prepaid offer (it paid by prepayment before) uses distribute_prepay (minimums at distribute_reload_rules), then distribute_prepaid_status, then retries.",
   };
 }
 
@@ -179,11 +180,16 @@ export function routineFor(args: Record<string, unknown>) {
     name: "distribute.you AI work",
     every: "hour",
     prompt:
-      `Use the distribute.you connector${target}. Call distribute_llm_work_claim with max 10. ` +
+      `Use the distribute.you connector${target}. Call distribute_llm_work_claim (one item at a time). If the item has promptParts, read the rest with distribute_llm_work_read before answering. ` +
       "Answer each item yourself: follow its claude.systemPrompt as your instructions and answer its claude.prompt " +
       "(a JSON value matching claude.jsonSchema when it is not null, else plain text). " +
       "Hand each answer back with distribute_llm_work_result (id, leaseId, ok true, model = your own model id). " +
       "Call distribute_llm_work_claim again until items is empty, then stop.",
+    doNow:
+      "Create it NOW, in this same turn, before any other call: a setup is not done until this routine exists. " +
+      "Prefer a DURABLE one that runs while nobody chats: a cloud routine (RemoteTrigger / the /schedule command in Claude Code) or a scheduled task (Claude Desktop, claude.ai), with `prompt` as given, every hour. " +
+      "A session cron (CronCreate) stops with its session and expires within days: use it only when nothing durable exists, and then also give the founder `howToCreate` for the permanent one. " +
+      "With no scheduling tool at all: give the founder `howToCreate` word for word and say it is the one step left.",
     howToCreate: [
       "Claude Code (Conductor, terminal): create a cloud routine that runs every hour with this prompt (the /schedule command or your routine tool), with the distribute.you connector. " +
         "Cloud routines only reach claude.ai connectors: if distribute.you is not one yet, the founder adds https://mcp.distribute.you/mcp at claude.ai > Settings > Connectors > Add custom connector, and confirms the email we send (once).",
@@ -268,6 +274,7 @@ export const toolDefinitions = {
   },
   distribute_prepay: {
     description:
+      "For accounts already on the prepaid offer only. A new founder runs free on their own keys and Claude (distribute_campaign_keys, distribute_set_key, distribute_set_llm_source) or takes the monthly plan (distribute_start_plan); never offer this to them. " +
       NO_HUMAN_NEEDED + " " +
       "Prepay before calls that spend money (a call that needs money and finds none answers 402 payment_required). " +
       "Returns a payment `url`: open it, or give it to your human to pay by card. The card is saved and reloads the balance automatically " +
@@ -289,7 +296,7 @@ export const toolDefinitions = {
   },
   distribute_prepaid_status: {
     description:
-      "Read the prepaid account: `state` (awaiting_payment: not paid yet; active: ready to spend; card_not_reloadable: fix it with distribute_prepay; " +
+      "For accounts already on the prepaid offer (a new founder reads distribute_plan_status instead). Read the prepaid account: `state` (awaiting_payment: not paid yet; active: ready to spend; card_not_reloadable: fix it with distribute_prepay; " +
       "auto_topup_off: the automatic reload is off (a reload amount of 0 turns it off), turn it back on with distribute_set_reload_amount or distribute_prepay; not_prepaid), " +
       "`balance_cents`, `paid_cents`, the automatic reload settings and whether the saved card can reload. Free to call. " +
       TARGET_HINT,
@@ -629,6 +636,7 @@ export const toolDefinitions = {
       "The answer carries `routine`: create that hourly routine (scheduled task) right away in the app you run in, with its prompt as given, so the work is done while nobody is chatting. " +
       "`own_key`: their own provider key (default provider `anthropic`), set first with distribute_set_key. `ours`: our keys, billed to the account. " +
       "Never ask for or use a Claude login or session token: only the founder's own Claude, inside their app, answers the work. " +
+      "It also puts a new account on the monthly plan's free state (`plan.onPlan`): it runs on its own keys and Claude, and spends no money of ours beyond a $2 debt; an account that already paid keeps its offer (`plan.keptOffer`). " +
       TARGET_HINT,
     schema: z.object({
       source: z.enum(LLM_SOURCES).describe("`claude_subscription`, `own_key` or `ours`."),
@@ -672,8 +680,18 @@ export const toolDefinitions = {
       "While you set up an account on `claude_subscription`, call this whenever another call fails or times out: the AI step behind it is waiting here for you. " +
       TARGET_HINT,
     schema: z.object({
-      max: z.number().int().min(1).max(10).optional().describe("Most items to take at once (default 5, max 10)."),
+      max: z.number().int().min(1).max(10).optional().describe("Most items to take at once (default 1: one item can be long, answer it before taking the next)."),
       waitMs: z.number().int().min(0).max(25_000).optional().describe("Wait up to this long for work when none is waiting (default 0: answer at once)."),
+      ...targetShape,
+    }),
+  },
+  distribute_llm_work_read: {
+    description:
+      "Read the rest of a long work item's prompt: an item from distribute_llm_work_claim with `promptParts` carries part 1 in `claude.prompt`; read parts 2 to `promptParts` here, join them in order, then answer. Free. " +
+      TARGET_HINT,
+    schema: z.object({
+      id: z.string().describe("The item's `id`."),
+      part: z.number().int().min(1).describe("Which part, 2 to `promptParts`."),
       ...targetShape,
     }),
   },
@@ -867,6 +885,9 @@ export async function handleToolCall(
 
     case "distribute_llm_work_claim":
       return handleLlmWorkClaim(args);
+
+    case "distribute_llm_work_read":
+      return handleLlmWorkRead(args);
 
     case "distribute_llm_work_result":
       return handleLlmWorkResult(args);
@@ -2080,6 +2101,7 @@ export const WALL_EXEMPT = new Set([
   "distribute_set_key",
   "distribute_llm_work_claim",
   "distribute_llm_work_result",
+  "distribute_llm_work_read",
 ]);
 
 /** The older prepaid offer's tools: an account on the plan is sent to the plan's tools instead. */
@@ -2242,19 +2264,37 @@ async function writeJson(path: string, verb: LlmWriteVerb, body: unknown) {
   return result.data as Record<string, unknown>;
 }
 
+/** billing's refusals that mean "this account keeps its current offer" (it paid, or holds another offer): not an error for the founder. */
+export const ENROLL_KEEPS_OFFER = new Set(["offer_not_switchable", "existing_paying_org", "subscription_exists"]);
+
+/**
+ * Choosing who runs the AI is the founder's first act on the solo path: it puts the account on the monthly plan
+ * (free state: own keys and Claude, a debt of at most $2 on ours). billing decides who may switch and refuses the rest.
+ */
+export async function enrollInPlan(args: Record<string, unknown>): Promise<{ onPlan: boolean; keptOffer?: string }> {
+  const result = await callApi<PlanState>(withTarget(`${SOLO_PLAN_PATH}/enroll`, args), { method: "POST", body: {} });
+  clearPlanCache();
+  if (!result.error) return { onPlan: true };
+  const code = typeof result.errorBody?.code === "string" ? result.errorBody.code : typeof result.errorBody?.error === "string" ? result.errorBody.error : "";
+  if (result.status === 409 && ENROLL_KEEPS_OFFER.has(code)) return { onPlan: false, keptOffer: code };
+  failWhole(result);
+}
+
 async function handleSetLlmSource(args: Record<string, unknown>) {
   const source = args.source as LlmSource;
   if (!LLM_SOURCES.includes(source)) {
     throw new Error(JSON.stringify({ error: "unknown_source", message: `source must be one of ${LLM_SOURCES.join(", ")}.` }));
   }
+  const plan = await enrollInPlan(args);
   if (source === "claude_subscription") {
     const state = await writeJson(withTarget("/v1/local-llm", args), "PUT", { enabled: true });
     return {
       source,
+      plan,
       pendingCalls: state.pendingCalls ?? null,
       routine: routineFor(args),
       next:
-        "Do this NOW, before anything else: create `routine` in the app you run in (say what it does, the founder confirms with one click). " +
+        "Do this NOW, in this turn, before any other call: create `routine` with your scheduling tool (see `routine.doNow`; the founder confirms with one click). Never postpone it to the end. " +
         "From now on, every AI step of this account (reading the site, drafting offers, writing) waits for this Claude: while you set the account up, " +
         "a call that fails or times out (a 502, `local_runner_waiting`, `local_runner_timeout`) means work is waiting for you. " +
         "Take it with distribute_llm_work_claim, answer it, hand it back with distribute_llm_work_result, then retry the call.",
@@ -2281,6 +2321,7 @@ async function handleSetLlmSource(args: Record<string, unknown>) {
   return {
     source,
     provider,
+    plan,
     next:
       source === "own_key"
         ? `The AI work now runs on the organization's own ${provider} key; ${provider} bills them directly.`
@@ -2325,12 +2366,12 @@ async function handleSetKey(args: Record<string, unknown>) {
 
 async function handleLlmWorkClaim(args: Record<string, unknown>) {
   const body = {
-    max: typeof args.max === "number" ? args.max : 5,
+    max: typeof args.max === "number" ? args.max : 1,
     waitMs: typeof args.waitMs === "number" ? args.waitMs : 0,
     runner: ROUTINE_RUNNER,
   };
   const data = await writeJson(withTarget("/v1/local-llm/work/claim", args), "POST", body);
-  const items = Array.isArray(data.items) ? data.items : [];
+  const items = (Array.isArray(data.items) ? data.items : []).map((it) => splitLongPrompt(it as WorkItem));
   return {
     items,
     next:
@@ -2338,6 +2379,56 @@ async function handleLlmWorkClaim(args: Record<string, unknown>) {
         ? "No work is waiting. Stop here."
         : "Answer each item yourself (claude.systemPrompt = your instructions, claude.prompt = the task; a JSON value matching claude.jsonSchema when not null, else text), " +
           "hand each back with distribute_llm_work_result, then call distribute_llm_work_claim again.",
+  };
+}
+
+/**
+ * A work item can carry a prompt far longer than an assistant can read in one tool answer (a judgment over a whole
+ * catalogue: 65k characters measured on prod, 2026-11-26). The claim hands back the first part; the rest is read with
+ * distribute_llm_work_read, from this server's memory of the claim (same key, until the item's `answerBy`). Nothing is cut.
+ */
+export const PROMPT_PART_CHARS = 30_000;
+type WorkItem = { id: string; answerBy?: string; claude?: { prompt?: string; [k: string]: unknown }; [k: string]: unknown };
+const claimedPrompts = new Map<string, { prompt: string; expiresAt: number }>();
+
+function promptKey(id: string) {
+  return `${getApiKey() ?? ""}|${id}`;
+}
+
+export function splitLongPrompt(item: WorkItem): WorkItem {
+  const prompt = item.claude?.prompt;
+  if (typeof prompt !== "string" || prompt.length <= PROMPT_PART_CHARS) return item;
+  const now = Date.now();
+  for (const [k, v] of claimedPrompts) if (v.expiresAt <= now) claimedPrompts.delete(k);
+  const by = item.answerBy ? Date.parse(item.answerBy) : NaN;
+  claimedPrompts.set(promptKey(item.id), { prompt, expiresAt: Number.isFinite(by) ? by : now + 30 * 60_000 });
+  const parts = Math.ceil(prompt.length / PROMPT_PART_CHARS);
+  return {
+    ...item,
+    claude: { ...item.claude, prompt: prompt.slice(0, PROMPT_PART_CHARS) },
+    promptPart: 1,
+    promptParts: parts,
+    readMore: `claude.prompt is part 1 of ${parts}. Read parts 2 to ${parts} with distribute_llm_work_read (this id), join them in order, then answer the whole prompt.`,
+  };
+}
+
+function handleLlmWorkRead(args: Record<string, unknown>) {
+  const id = idArg(args, "id", "item_id");
+  const part = typeof args.part === "number" ? args.part : NaN;
+  const held = claimedPrompts.get(promptKey(id));
+  if (!held || held.expiresAt <= Date.now()) {
+    throw new Error(JSON.stringify({ error: "item_not_held", message: "This item is not held for this key anymore (expired, or claimed elsewhere).", fix: "Call distribute_llm_work_claim again." }));
+  }
+  const parts = Math.ceil(held.prompt.length / PROMPT_PART_CHARS);
+  if (!Number.isInteger(part) || part < 1 || part > parts) {
+    throw new Error(JSON.stringify({ error: "bad_part", message: `part must be 1 to ${parts}.` }));
+  }
+  return {
+    id,
+    part,
+    parts,
+    text: held.prompt.slice((part - 1) * PROMPT_PART_CHARS, part * PROMPT_PART_CHARS),
+    next: part < parts ? `Read part ${part + 1} next.` : "That was the last part: answer the whole prompt, then distribute_llm_work_result.",
   };
 }
 
