@@ -202,6 +202,10 @@ export function routineFor(args: Record<string, unknown>) {
   };
 }
 
+/** A number or boolean an agent sends as a string ("2", "true") is read as the value it names. */
+const looseInt = (min: number, max?: number) => z.preprocess((v) => (typeof v === "string" && /^\d+$/.test(v.trim()) ? Number(v) : v), max === undefined ? z.number().int().min(min) : z.number().int().min(min).max(max));
+const looseBool = z.preprocess((v) => (v === "true" ? true : v === "false" ? false : v), z.boolean());
+
 // Tool definitions with Zod schemas
 /** The two things a client's report says (features-service `POST /orgs/unit-reports`). There is no positive kind. */
 export const UNIT_REPORT_KINDS = ["edited", "reported"] as const;
@@ -680,8 +684,8 @@ export const toolDefinitions = {
       "While you set up an account on `claude_subscription`, call this whenever another call fails or times out: the AI step behind it is waiting here for you. " +
       TARGET_HINT,
     schema: z.object({
-      max: z.number().int().min(1).max(10).optional().describe("Most items to take at once (default 1: one item can be long, answer it before taking the next)."),
-      waitMs: z.number().int().min(0).max(25_000).optional().describe("Wait up to this long for work when none is waiting (default 0: answer at once)."),
+      max: looseInt(1, 10).optional().describe("Most items to take at once (default 1: one item can be long, answer it before taking the next)."),
+      waitMs: looseInt(0, 25_000).optional().describe("Wait up to this long for work when none is waiting (default 0: answer at once)."),
       ...targetShape,
     }),
   },
@@ -691,7 +695,7 @@ export const toolDefinitions = {
       TARGET_HINT,
     schema: z.object({
       id: z.string().describe("The item's `id`."),
-      part: z.number().int().min(1).describe("Which part, 2 to `promptParts`."),
+      part: looseInt(1).describe("Which part, 2 to `promptParts`."),
       ...targetShape,
     }),
   },
@@ -704,7 +708,7 @@ export const toolDefinitions = {
     schema: z.object({
       id: z.string().describe("The item's `id`."),
       leaseId: z.string().describe("The item's `leaseId`."),
-      ok: z.boolean().describe("true when you answered it."),
+      ok: looseBool.describe("true when you answered it."),
       model: z.string().optional().describe("Your own model id, the one that wrote the answer. Required when ok."),
       text: z.string().optional().describe("Your answer, for an item with no jsonSchema."),
       structured: z.unknown().optional().describe("Your answer as a JSON value matching the item's jsonSchema (a JSON-encoded string is read as that value)."),

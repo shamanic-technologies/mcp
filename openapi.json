@@ -1142,9 +1142,9 @@
                   "description": "The item's `id`."
                 },
                 "part": {
+                  "description": "Which part, 2 to `promptParts`.",
                   "type": "integer",
-                  "minimum": 1,
-                  "description": "Which part, 2 to `promptParts`."
+                  "minimum": 1
                 },
                 "brandId": {
                   "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
@@ -1182,8 +1182,8 @@
                   "description": "The item's `leaseId`."
                 },
                 "ok": {
-                  "type": "boolean",
-                  "description": "true when you answered it."
+                  "description": "true when you answered it.",
+                  "type": "boolean"
                 },
                 "model": {
                   "description": "Your own model id, the one that wrote the answer. Required when ok.",
@@ -3824,9 +3824,9 @@
                     "description": "The item's `id`."
                   },
                   "part": {
+                    "description": "Which part, 2 to `promptParts`.",
                     "type": "integer",
-                    "minimum": 1,
-                    "description": "Which part, 2 to `promptParts`."
+                    "minimum": 1
                   },
                   "brandId": {
                     "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
@@ -3899,8 +3899,8 @@
                     "description": "The item's `leaseId`."
                   },
                   "ok": {
-                    "type": "boolean",
-                    "description": "true when you answered it."
+                    "description": "true when you answered it.",
+                    "type": "boolean"
                   },
                   "model": {
                     "description": "Your own model id, the one that wrote the answer. Required when ok.",
