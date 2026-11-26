@@ -205,3 +205,12 @@ describe("tool texts", () => {
     expect(JSON.stringify(routineFor({}))).not.toMatch(/token|password/i);
   });
 });
+
+describe("work tools read numbers and booleans sent as strings", () => {
+  it("accepts ok \"true\" and part \"2\"", () => {
+    expect(toolDefinitions.distribute_llm_work_result.schema.parse({ id: "i", leaseId: "l", ok: "true" }).ok).toBe(true);
+    expect(toolDefinitions.distribute_llm_work_read.schema.parse({ id: "i", part: "2" }).part).toBe(2);
+    expect(toolDefinitions.distribute_llm_work_claim.schema.parse({ max: "3" }).max).toBe(3);
+    expect(toolDefinitions.distribute_llm_work_result.schema.safeParse({ id: "i", leaseId: "l", ok: "yes" }).success).toBe(false);
+  });
+});
