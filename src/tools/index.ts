@@ -654,7 +654,7 @@ export const toolDefinitions = {
       TARGET_HINT,
     schema: z.object({
       outcome: z.string().describe("The campaign's Target outcome key, e.g. `meeting_booked`."),
-      campaignId: z.string().optional().describe("The campaign, once created: read the scripts its strategy keeps. Absent = before launch."),
+      campaignId: z.string().optional().describe("The campaign UNIT's id: `units[].campaignId` of the sales-funnel campaign answer, never the sales-funnel campaign's own id. Any status, a stopped campaign just created included. Absent = before any campaign exists."),
       ...targetShape,
     }),
   },

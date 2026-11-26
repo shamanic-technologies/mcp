@@ -1038,7 +1038,7 @@
                   "description": "The campaign's Target outcome key, e.g. `meeting_booked`."
                 },
                 "campaignId": {
-                  "description": "The campaign, once created: read the scripts its strategy keeps. Absent = before launch.",
+                  "description": "The campaign UNIT's id: `units[].campaignId` of the sales-funnel campaign answer, never the sales-funnel campaign's own id. Any status, a stopped campaign just created included. Absent = before any campaign exists.",
                   "type": "string"
                 },
                 "brandId": {
@@ -3608,7 +3608,7 @@
                     "description": "The campaign's Target outcome key, e.g. `meeting_booked`."
                   },
                   "campaignId": {
-                    "description": "The campaign, once created: read the scripts its strategy keeps. Absent = before launch.",
+                    "description": "The campaign UNIT's id: `units[].campaignId` of the sales-funnel campaign answer, never the sales-funnel campaign's own id. Any status, a stopped campaign just created included. Absent = before any campaign exists.",
                     "type": "string"
                   },
                   "brandId": {
