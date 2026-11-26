@@ -96,6 +96,33 @@ describe("distribute_llm_source", () => {
   });
 });
 
+describe("distribute_campaign_keys", () => {
+  it("reads the campaign's needed keys and names the missing musts", async () => {
+    routes({
+      "GET /v1/engines/meeting_booked/required-keys?campaignId=c-1&brandId=b-1": {
+        outcome: "meeting_booked",
+        campaignId: "c-1",
+        ready: false,
+        engines: [],
+        keys: [
+          { provider: "apollo", domain: "apollo.io", held: false, required: true, for: [] },
+          { provider: "anthropic", domain: null, held: true, required: true, for: [] },
+          { provider: "instantly", domain: null, held: false, required: false, for: [] },
+        ],
+      },
+    });
+    const out = (await handleToolCall("distribute_campaign_keys", { outcome: "meeting_booked", campaignId: "c-1", brandId: "b-1" })) as Record<string, any>;
+    expect(out.missingRequired).toEqual(["apollo"]);
+    expect(out.next).toContain("apollo");
+    expect(out.ready).toBe(false);
+  });
+
+  it("refuses with no outcome, before any call", async () => {
+    await expect(handleToolCall("distribute_campaign_keys", {})).rejects.toThrow(/missing_outcome/);
+    expect(mockCallApi).not.toHaveBeenCalled();
+  });
+});
+
 describe("distribute_set_key", () => {
   it("saves the key, puts the provider on it, and never echoes the clear key", async () => {
     routes({

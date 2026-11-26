@@ -1025,6 +1025,40 @@
           "$schema": "http://json-schema.org/draft-07/schema#"
         }
       },
+      "distribute_campaign_keys": {
+        "description": "Before launching a campaign on the founder's own keys (no paid plan): which provider keys the campaign needs, what each is for, and which the organization already holds (`held`). `ready` true = every step has a way to run with the keys held. `required: false` = one choice among several: another way runs without it. Ask the founder for exactly the missing keys marked `required` (nothing else), save each with distribute_set_key, then read again. `outcome` = the campaign's Target outcome key (e.g. `meeting_booked`), as the campaign was created for; add `campaignId` once it exists. On the paid plan nothing is needed: our keys run it. Free. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "inputSchema": {
+          "$ref": "#/definitions/distribute_campaign_keys",
+          "definitions": {
+            "distribute_campaign_keys": {
+              "type": "object",
+              "properties": {
+                "outcome": {
+                  "type": "string",
+                  "description": "The campaign's Target outcome key, e.g. `meeting_booked`."
+                },
+                "campaignId": {
+                  "description": "The campaign, once created: read the scripts its strategy keeps. Absent = before launch.",
+                  "type": "string"
+                },
+                "brandId": {
+                  "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                  "type": "string"
+                },
+                "orgId": {
+                  "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "outcome"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        }
+      },
       "distribute_set_key": {
         "description": "Save the organization's own key for a provider (anthropic, openai, apollo, instantly...), so its campaigns use that key and the provider bills them directly. Replaces any key already saved for that provider, and makes the organization use its own key for it. The key is stored encrypted; answers show it masked only. Ask the founder to paste the key; never guess or reuse one. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
         "inputSchema": {
@@ -3483,6 +3517,75 @@
                 },
                 "required": [
                   "source"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "example": "text"
+                          },
+                          "text": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mcp/tools/distribute_campaign_keys": {
+      "post": {
+        "tags": [
+          "MCP Tools"
+        ],
+        "summary": "Before launching a campaign on the founder's own keys (no paid plan): which provider keys the campaign needs, what each is for, and which the organization already holds (`held`). `ready` true = every step has a way to run with the keys held. `required: false` = one choice among several: another way runs without it. Ask the founder for exactly the missing keys marked `required` (nothing else), save each with distribute_set_key, then read again. `outcome` = the campaign's Target outcome key (e.g. `meeting_booked`), as the campaign was created for; add `campaignId` once it exists. On the paid plan nothing is needed: our keys run it. Free. Call distribute_status first to list brands, then pass brandId (and orgId if a brand sits in several orgs). A user in a single organization can omit both.",
+        "description": "MCP Tool: distribute_campaign_keys. Call via JSON-RPC on /mcp with method \"tools/call\" and params.name=\"distribute_campaign_keys\".",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "outcome": {
+                    "type": "string",
+                    "description": "The campaign's Target outcome key, e.g. `meeting_booked`."
+                  },
+                  "campaignId": {
+                    "description": "The campaign, once created: read the scripts its strategy keeps. Absent = before launch.",
+                    "type": "string"
+                  },
+                  "brandId": {
+                    "description": "Brand to act on (from distribute_status). Selects the organization holding it. Required when your key reaches several organizations, unless orgId is given.",
+                    "type": "string"
+                  },
+                  "orgId": {
+                    "description": "Organization to act in (from distribute_status). Add it when a brand sits in several organizations, or to act in an organization without naming a brand.",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "outcome"
                 ],
                 "additionalProperties": false
               }

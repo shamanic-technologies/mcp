@@ -53,7 +53,7 @@ Call `distribute_status` first — it confirms the key reached the gateway, list
 
 ## Tools
 
-There are **39 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
+There are **40 tools**. The list below is the whole surface; the `/.well-known` discovery document is built from the same definitions, so it always lists the same set.
 
 **Same scope as the API.** Whatever your key can do on `https://api.distribute.you/v1/*`, it can do from here, and nothing more: the API decides on every call what the key may read or write, and this server never widens or narrows it. Our own internals (prompt text, models, token counts, generation costs, the internal service registry) never come back through it.
 
@@ -84,6 +84,7 @@ Who runs the AI work (writing, judging replies, the conversation), free path inc
 |---|---|
 | `distribute_llm_source` | Who runs it now (`claude_subscription`, `own_key`, `ours`), the work waiting, when a routine last took work, the provider keys held (masked) |
 | `distribute_set_llm_source` | Choose it. `claude_subscription`: the founder's own Claude plan answers the work, $0 to them; the answer carries the hourly `routine` (prompt + how to create it in Claude Code, Claude Desktop or claude.ai, one confirmation click). `own_key`: their own provider key. `ours`: our keys, billed |
+| `distribute_campaign_keys` | Before launching on the founder's own keys: the keys a campaign needs, what each is for, which are held, and the missing musts to ask for |
 | `distribute_set_key` | Save the organization's own key for a provider (stored encrypted, shown masked) and use it |
 | `distribute_llm_work_claim` | Take the AI work waiting for the founder's Claude: each item is a task to answer yourself (instructions, prompt, JSON schema when one is asked) |
 | `distribute_llm_work_result` | Hand one answer back (`id`, `leaseId`, your model id, `text` or `structured`) |
